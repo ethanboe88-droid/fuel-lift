@@ -18,6 +18,8 @@ const DEFAULT_PLAN = {
 const TEXT_MODEL = "claude-haiku-5-5";
 const PHOTO_MODEL = "claude-sonnet-5-5";
 const COOKIE = "fl_session";
+const MAX_TRIES = 5;
+const LOCK_MS = 15 * 60 * 1000;
 
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), {
@@ -69,10 +71,28 @@ async function api(req, env, url) {
   if (p === "/api/login" && m === "POST") {
     if (!env.APP_PASSWORD) return json({ error: "APP_PASSWORD secret is not set in Cloudflare yet." }, 500);
     const { password } = await req.json();
-    if (!safeEqual(String(password || ""), env.APP_PASSWORD)) {
-      await new Promise((r) => setTimeout(r, 800));
-      return json({ error: "Wrong password" }, 401);
+    // Lockout: 5 wrong tries → login locked for 15 minutes (already-logged-in devices keep working)
+    const now = Date.now();
+    const row = await env.DB.prepare("SELECT value FROM settings WHERE key='login_guard'").first();
+    const guard = row ? JSON.parse(row.value) : { fails: 0, until: 0 };
+    if (guard.until > now) {
+      const mins = Math.ceil((guard.until - now) / 60000);
+      return json({ error: `Too many wrong tries. Locked for ${mins} more min.` }, 429);
     }
+    const saveGuard = (g) => env.DB.prepare(
+      "INSERT INTO settings(key,value) VALUES('login_guard',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+    ).bind(JSON.stringify(g)).run();
+    if (!safeEqual(String(password || ""), env.APP_PASSWORD)) {
+      const fails = (guard.fails || 0) + 1;
+      if (fails >= MAX_TRIES) {
+        await saveGuard({ fails: 0, until: now + LOCK_MS });
+        return json({ error: "Too many wrong tries. Locked for 15 min." }, 429);
+      }
+      await saveGuard({ fails, until: 0 });
+      await new Promise((r) => setTimeout(r, 800));
+      return json({ error: `Wrong password (${MAX_TRIES - fails} tries left)` }, 401);
+    }
+    if (guard.fails) await saveGuard({ fails: 0, until: 0 });
     const tok = await sessionToken(env);
     return json({ ok: true }, 200, {
       "set-cookie": `${COOKIE}=${tok}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`,
