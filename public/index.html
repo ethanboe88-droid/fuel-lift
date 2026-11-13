@@ -6,13 +6,13 @@
 <meta name="theme-color" content="#121A26">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Fuel & Lift">
+<meta name="apple-mobile-web-app-title" content="Big EO Fitness">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
-<title>Fuel &amp; Lift</title>
+<title>The Big EO Fitness</title>
 <style>
 :root{
   --base:#121A26; --panel:#1A2433; --raised:#223047; --line:#2C3A52;
@@ -32,8 +32,9 @@ button{cursor:pointer}
 
 /* top bar */
 .top{display:flex;align-items:center;justify-content:space-between;height:52px}
-.date{font:600 22px/1 var(--cond);letter-spacing:.2px}
-.date small{display:block;font:500 13px var(--body);color:var(--mut);margin-top:4px;letter-spacing:0}
+.brand{font:700 23px/1 var(--cond);letter-spacing:1.2px;white-space:nowrap}
+.brand em{font-style:normal;color:var(--blue)}
+.brand small{display:block;font:500 13px var(--body);color:var(--mut);margin-top:5px;letter-spacing:0}
 .gear{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--panel);display:grid;place-items:center}
 .gear svg{width:19px;height:19px;stroke:var(--mut)}
 .toast{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%);background:var(--raised);border:1px solid var(--line);padding:7px 14px;border-radius:99px;font-size:13px;color:var(--mut);z-index:50;pointer-events:none;transition:opacity .25s}
@@ -89,6 +90,23 @@ input:focus,textarea:focus{border-color:var(--blue);outline:0}
 .go{border:0;border-radius:var(--r-sm);background:var(--blue);color:#fff;font:600 16px var(--cond);letter-spacing:.4px;padding:0 16px;min-height:44px}
 .go:disabled{opacity:.45}
 .plus{padding:0;font-size:22px}
+
+/* quick add */
+.qa-tog{width:100%;display:flex;justify-content:space-between;align-items:center;border:0;background:none;padding:14px 16px;font-weight:600;font-size:16px;text-align:left}
+.qa-tog .cv{color:var(--mut);transition:transform .2s;font-size:14px}
+.qa-tog.open .cv{transform:rotate(180deg)}
+.qa-tog small{color:var(--mut);font-weight:400;font-size:14px;margin-left:6px}
+.fav{display:flex;align-items:center;gap:12px;padding:11px 16px;border-top:1px solid var(--line)}
+.fav .nm{flex:1;min-width:0}
+.fav .nm small{display:block;color:var(--mut);font-size:13px;font-variant-numeric:tabular-nums}
+.addb{border:0;background:var(--blue-soft);color:#BBD0FF;border-radius:99px;padding:7px 14px;font-weight:600;font-size:14px;white-space:nowrap}
+.addb.done{background:var(--blue);color:#fff}
+.favform{display:grid;grid-template-columns:1fr 72px 66px;gap:8px;padding:12px 16px 4px;border-top:1px solid var(--line)}
+.favform+.favsave{padding:8px 16px 14px}
+.favsave .go{width:100%}
+.qa-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 16px 12px;border-top:1px solid var(--line);font-size:13.5px;color:var(--mut)}
+.star{border:0;background:none;color:var(--dim);font-size:17px;width:28px;height:28px;line-height:1;padding:0}
+.star.on{color:var(--amber)}
 
 /* week chart */
 .chart{padding:18px 14px 12px}
@@ -213,8 +231,8 @@ details.eg summary span{color:var(--mut);font-weight:400;font-size:14px}
 
 /* login */
 .login{max-width:340px;margin:16vh auto 0;text-align:center}
-.login .mark{font:700 44px/1 var(--cond);letter-spacing:.5px}
-.login .mark span{color:var(--blue)}
+.login .mark{font:700 46px/.92 var(--cond);letter-spacing:1.5px}
+.login .mark em{font-style:normal;color:var(--blue);display:block;font-size:24px;letter-spacing:9px;margin-top:8px}
 .login p{color:var(--mut);margin:10px 0 26px}
 .login input{text-align:center;font:600 26px var(--cond);letter-spacing:6px;padding:14px}
 .login .go{width:100%;margin-top:12px;min-height:50px;font-size:18px}
@@ -275,14 +293,14 @@ function load(){return api('/api/state?today='+today()).then(function(d){S=d;ren
 
 function renderLogin(err){
   document.getElementById('dock').hidden=true;document.getElementById('modal').innerHTML='';
-  document.getElementById('app').innerHTML='<form class="login" id="login"><div class="mark">Fuel <span>&amp;</span> Lift</div><p>Enter your passcode</p><input type="password" name="pw" autocomplete="current-password" autofocus aria-label="Passcode"><button class="go">Unlock</button>'+(err?'<div class="err">'+esc(err)+'</div>':'')+'</form>';
+  document.getElementById('app').innerHTML='<form class="login" id="login"><div class="mark">THE BIG EO<em>FITNESS</em></div><p>Enter your passcode</p><input type="password" name="pw" autocomplete="current-password" autofocus aria-label="Passcode"><button class="go">Unlock</button>'+(err?'<div class="err">'+esc(err)+'</div>':'')+'</form>';
 }
 
 // ---------- render ----------
 function render(){
   if(!S)return;
   var t=today(),d=parse(t);
-  var h='<div class="top"><div class="date">'+d.toLocaleDateString(undefined,{weekday:'long'})+'<small>'+d.toLocaleDateString(undefined,{month:'long',day:'numeric'})+'</small></div><button class="gear" data-act="settings" aria-label="Settings">'+IC.gear+'</button></div>';
+  var h='<div class="top"><div class="brand">THE BIG EO <em>FITNESS</em><small>'+d.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})+'</small></div><button class="gear" data-act="settings" aria-label="Settings">'+IC.gear+'</button></div>';
   h+='<div class="seg'+(ui.tab==='wo'?' r':'')+'"><i></i><button data-tab="cal" class="'+(ui.tab==='cal'?'on':'')+'">Fuel</button><button data-tab="wo" class="'+(ui.tab==='wo'?'on':'')+'">Lift</button></div>';
   h+=ui.tab==='cal'?renderCal():renderWo();
   document.getElementById('app').innerHTML=h;
@@ -317,11 +335,12 @@ function renderCal(){
   // stats
   var sum=0,n=0,hit=0;for(var i=0;i<7;i++){var dd=addDays(t,-i),x=tot(dd,'calories');if(x){sum+=x;n++;if(g&&x>=g*0.9&&x<=g*1.05)hit++}}
   h+='<div class="stats"><div><b>'+fmt(p)+'<small>'+(pg?' / '+fmt(pg)+' g':' g')+'</small></b><span>Protein</span>'+(pg?'<div class="pbar"><i style="width:'+Math.min(100,p/pg*100)+'%"></i></div>':'')+'</div><div><b>'+(n?fmt(sum/n):'–')+'</b><span>7-day avg</span></div><div><b>'+(g?hit+'<small>/7</small>':'–')+'</b><span>On target</span></div></div>';
+  h+=renderQA(day);
   // entries
   var ms=meals(day);
   h+='<div class="h"><h2>'+(day===t?"Today's food":'Food')+'</h2><button class="lnk" data-act="manual">'+(ui.manual?'Close':'Add manually')+'</button></div><div class="panel rows">';
   if(!ms.length)h+='<div class="empty">Nothing logged yet. Type what you ate in the bar below.</div>';
-  ms.forEach(function(m){h+='<div class="r"><span class="nm">'+(esc(m.name)||'<span style="color:var(--mut)">Quick add</span>')+'</span><span class="kc">'+fmt(m.calories)+'</span><span class="pg">'+(m.protein!=null?m.protein+'g':'')+'</span><button class="del" data-delmeal="'+m.id+'" aria-label="Delete">×</button></div>'});
+  ms.forEach(function(m){h+='<div class="r"><span class="nm">'+(esc(m.name)||'<span style="color:var(--mut)">Quick add</span>')+'</span><span class="kc">'+fmt(m.calories)+'</span><span class="pg">'+(m.protein!=null?m.protein+'g':'')+'</span>'+(m.name?'<button class="star'+(isFav(m.name)?' on':'')+'" data-star="'+m.id+'" aria-label="'+(isFav(m.name)?'Saved food':'Save to quick add')+'">'+(isFav(m.name)?'★':'☆')+'</button>':'')+'<button class="del" data-delmeal="'+m.id+'" aria-label="Delete">×</button></div>'});
   if(ui.manual)h+='<form class="manual" id="addmeal"><input name="n" placeholder="Food" aria-label="Food"><input name="c" type="number" inputmode="numeric" placeholder="Cal" aria-label="Calories"><input name="p" type="number" inputmode="numeric" placeholder="Prot" aria-label="Protein grams"><button class="go plus" aria-label="Add">+</button></form>';
   h+='</div>';
   // chart
@@ -338,6 +357,26 @@ function renderCal(){
   h+='</div>';
   return h;
 }
+
+function favs(){return S.favorites||(S.favorites=[])}
+function isFav(n){n=String(n).toLowerCase();return favs().some(function(f){return f.name.toLowerCase()===n})}
+function renderQA(day){
+  var F=favs(),h='<div class="panel">';
+  h+='<button class="qa-tog'+(ui.qa?' open':'')+'" data-act="qa" aria-expanded="'+!!ui.qa+'"><span>Quick add<small>'+(F.length?F.length+' saved':'your go-to foods')+'</small></span><span class="cv">▼</span></button>';
+  if(ui.qa){
+    if(!F.length&&!ui.qaEdit)h+='<div class="empty" style="border-top:1px solid var(--line)">Save foods you eat all the time, then add them with one tap.</div>';
+    F.forEach(function(f,i){
+      h+='<div class="fav"><div class="nm">'+esc(f.name)+'<small>'+fmt(f.calories)+' cal'+(f.protein!=null&&f.protein!==''?' · '+f.protein+' g protein':'')+'</small></div>';
+      h+=ui.qaEdit?'<button class="del" data-rmfav="'+i+'" aria-label="Delete '+esc(f.name)+'">×</button>':'<button class="addb'+(ui.qaJust===i?' done':'')+'" data-addfav="'+i+'">'+(ui.qaJust===i?'Added':'+ Add')+'</button>';
+      h+='</div>'});
+    if(ui.qaEdit||!F.length){
+      h+='<form id="favform"><div class="favform"><input name="n" placeholder="Food name" aria-label="Food name" required><input name="c" type="number" inputmode="numeric" placeholder="Cal" aria-label="Calories" required><input name="p" type="number" inputmode="numeric" placeholder="Prot" aria-label="Protein grams"></div><div class="favsave"><button class="go">Save food</button></div></form>';
+    }
+    if(F.length)h+='<div class="qa-foot"><span>'+(ui.qaEdit?'Add or remove saved foods':'Adds to '+(day===today()?'today':short(day)))+'</span><button class="lnk" data-act="qaedit" style="background:none;border:0;color:var(--blue);font-weight:600">'+(ui.qaEdit?'Done':'Edit')+'</button></div>';
+  }
+  return h+'</div>';
+}
+function saveFavs(){return saving(api('/api/settings',{body:{favorites:favs()}}))}
 
 function dayStats(d,wk){var gs=S.plan[d]||[],a=0,dn=0;gs.forEach(function(g){(S.groups[g]||[]).forEach(function(e){a++;if(checked(wk,d+'|'+g+'|'+e))dn++})});return{gs:gs,all:a,done:dn}}
 
@@ -452,7 +491,7 @@ function toggleMic(){
 }
 
 document.addEventListener('click',function(e){
-  var b=e.target.closest('[data-tab],[data-act],[data-delmeal],[data-goday],[data-tog],[data-rmx],[data-rmg],[data-logopen],[data-rm],[data-wday],[data-chk]');if(!b||!S)return;
+  var b=e.target.closest('[data-addfav],[data-rmfav],[data-star],[data-tab],[data-act],[data-delmeal],[data-goday],[data-tog],[data-rmx],[data-rmg],[data-logopen],[data-rm],[data-wday],[data-chk]');if(!b||!S)return;
   var t=today(),a=b.dataset.act;
   if(a==='closemodal'&&e.target!==b)return; // clicks inside the modal
   if(b.dataset.tab){ui.tab=b.dataset.tab;set('tab',ui.tab);ui.ai=null;ui.aiErr='';render();window.scrollTo(0,0);return}
@@ -463,6 +502,14 @@ document.addEventListener('click',function(e){
   if(a==='prev'){ui.calDay=addDays(ui.calDay||t,-1);render();return}
   if(a==='next'){var n=addDays(ui.calDay||t,1);ui.calDay=n>=t?'':n;render();return}
   if(a==='manual'){ui.manual=!ui.manual;render();return}
+  if(a==='qa'){ui.qa=!ui.qa;if(!ui.qa)ui.qaEdit=false;render();return}
+  if(a==='qaedit'){ui.qaEdit=!ui.qaEdit;render();return}
+  if(b.dataset.addfav){var fi=+b.dataset.addfav,fv=favs()[fi];if(!fv)return;ui.qaJust=fi;addMeal({name:fv.name,calories:fv.calories,protein:fv.protein},ui.calDay||t).then(render);setTimeout(function(){if(ui.qaJust===fi){ui.qaJust=null;render()}},1200);render();return}
+  if(b.dataset.rmfav){favs().splice(+b.dataset.rmfav,1);render();saveFavs();return}
+  if(b.dataset.star){var sm=S.meals.filter(function(m){return m.id===+b.dataset.star})[0];if(!sm)return;
+    if(isFav(sm.name)){S.favorites=favs().filter(function(f){return f.name.toLowerCase()!==sm.name.toLowerCase()})}
+    else favs().push({name:sm.name,calories:sm.calories,protein:sm.protein});
+    render();saveFavs();return}
   if(a==='edit'){ui.edit=!ui.edit;render();window.scrollTo(0,0);return}
   if(a==='logout'){ui.modal=false;api('/api/logout',{body:{}}).then(function(){S=null;renderLogin()});return}
   if(a==='clearimg'){ui.img=null;renderDock();return}
@@ -494,6 +541,9 @@ document.addEventListener('submit',function(e){
   if(f.id==='login'){var bt=f.querySelector('button');bt.disabled=true;api('/api/login',{body:{password:v('pw')}}).then(load).catch(function(er){renderLogin(er.message)});return}
   if(!S)return;
   if(f.id==='aiform'){runAI();return}
+  if(f.id==='favform'){var fc=parseFloat(v('c')),fn=v('n');if(!fn||!(fc>=0))return;var fp=v('p');
+    var nf={name:fn,calories:Math.round(fc),protein:fp===''?null:Math.round(+fp)};
+    S.favorites=favs().filter(function(x){return x.name.toLowerCase()!==fn.toLowerCase()});S.favorites.push(nf);ui.qaEdit=true;render();var ff=document.querySelector('#favform [name=n]');if(ff)ff.focus();saveFavs();return}
   if(f.id==='addmeal'){var c=parseFloat(v('c'));if(!(c>=0))return;addMeal({name:v('n'),calories:c,protein:v('p')},ui.calDay||today()).then(render);return}
   if(f.id==='goals'){S.goal=Math.max(0,Math.round(+v('g')||0));S.proteinGoal=Math.max(0,Math.round(+v('pg')||0));ui.modal=false;saving(api('/api/settings',{body:{goal:S.goal,proteinGoal:S.proteinGoal}}));render();return}
   if(f.dataset.liftform){var k=f.dataset.liftform;ui.logOpen='';addLift({exercise:k.split('|')[2],weight:v('w'),reps:v('r'),sets:v('s')},k).then(render,render);render();return}
@@ -509,7 +559,7 @@ function runAI(){
   var ta=document.getElementById('aitext'),text=ta?ta.value.trim():'';
   if(!text&&!ui.img)return;if(ui.aiBusy)return;
   ui.aiBusy=true;ui.aiErr='';ui.ai=null;renderDock();
-  api('/api/ai/parse',{body:{text:text,image:ui.img,exercises:allExercises()}})
+  api('/api/ai/parse',{body:{text:text,image:ui.img,exercises:allExercises(),favorites:favs()}})
   .then(function(r){ui.ai={meals:r.meals||[],lifts:r.lifts||[],note:r.note||''};var t2=document.getElementById('aitext');if(t2)t2.value=''})
   .catch(function(e){if(e.message!=='login')ui.aiErr=e.message+' Your text is still in the box, so tap send to retry.'})
   .then(function(){ui.aiBusy=false;if(S)renderDock()});

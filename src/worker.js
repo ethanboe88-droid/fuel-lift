@@ -110,7 +110,7 @@ async function api(req, env, url) {
   if (p === "/api/settings" && m === "POST") {
     const body = await req.json();
     const stmts = [];
-    for (const k of ["goal", "proteinGoal", "groups", "plan"]) {
+    for (const k of ["goal", "proteinGoal", "groups", "plan", "favorites"]) {
       if (body[k] !== undefined)
         stmts.push(db.prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
           .bind(k, JSON.stringify(body[k])));
@@ -186,6 +186,7 @@ async function loadState(db, today) {
     proteinGoal: s.proteinGoal || 0,
     groups: s.groups || DEFAULT_GROUPS,
     plan: s.plan || DEFAULT_PLAN,
+    favorites: s.favorites || [],
     meals: meals.results,
     checks: checks.results,
     lifts: lifts.results,
@@ -245,13 +246,14 @@ const LOG_TOOL = {
   },
 };
 
-async function aiParse(env, { text, image, exercises = [] }) {
+async function aiParse(env, { text, image, exercises = [], favorites = [] }) {
   const system =
     "You turn a gym-goer's quick notes or a meal photo into log entries. " +
     "Food: estimate realistic calories and protein for typical US portions (restaurant chains: use their published numbers when you know them). " +
     "If one message lists several foods eaten together, return one combined meal unless they are clearly separate. " +
     "Lifts: weight in lbs. '185x5x3' or '185 for 5, 3 sets' = weight 185, reps 5, sets 3. " +
     "Map exercise names to this list when they match (case/wording can differ): " + JSON.stringify(exercises.slice(0, 200)) + ". " +
+    (favorites.length ? "The user's saved foods (use these exact numbers when they mention one, e.g. 'my usual shake'): " + JSON.stringify(favorites.slice(0, 100)) + ". " : "") +
     "Return empty arrays for anything not mentioned. Always call log_entries.";
   const content = [];
   if (image) {
