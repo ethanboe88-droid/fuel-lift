@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fuel-lift",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "fuel-lift",
+      "database_id": "a825bdab-f40a-49c0-a5f6-b1e9a53ed2ff",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "observability": { "enabled": true }
+  // Secrets (set in Cloudflare dashboard → Settings → Variables and Secrets):
+  //   APP_PASSWORD       – the password you type to log in
+  //   ANTHROPIC_API_KEY  – from console.anthropic.com
+}
