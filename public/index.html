@@ -36,7 +36,17 @@ button{cursor:pointer}
 .brand em{font-style:normal;color:var(--blue)}
 .brand small{display:block;font:500 13px var(--body);color:var(--mut);margin-top:5px;letter-spacing:0}
 .gear{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--panel);display:grid;place-items:center}
-.gear svg{width:19px;height:19px;stroke:var(--mut)}
+.gear svg{width:20px;height:20px;stroke:var(--txt)}
+.menu-list{margin:4px -6px 0}
+.mi{display:flex;align-items:center;gap:14px;width:100%;border:0;background:none;padding:14px 8px;border-radius:12px;text-align:left;font-size:17px;font-weight:500}
+.mi:hover,.mi:focus-visible{background:var(--raised)}
+.mi svg{width:21px;height:21px;stroke:var(--mut);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.mi span{flex:1}
+.mi small{color:var(--mut);font-size:14px;font-weight:400}
+.mi.mi-out{color:#FF7A7C}
+.mi.mi-out svg{stroke:#FF7A7C}
+.msep{height:1px;background:var(--line);margin:6px 8px}
+.mback{border:0;background:none;color:var(--blue);font-weight:600;font-size:15px;padding:0 0 12px}
 .toast{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%);background:var(--raised);border:1px solid var(--line);padding:7px 14px;border-radius:99px;font-size:13px;color:var(--mut);z-index:50;pointer-events:none;transition:opacity .25s}
 .toast.hide{opacity:0}
 .toast.bad{color:#ffd0d0;border-color:#6b2a2c;background:#3a1d22}
@@ -264,7 +274,11 @@ var IC={
   mic:'<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
   send:'<svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
   chk:'<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg>',
-  gear:'<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>'
+  gear:'<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
+  target:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg>',
+  plan:'<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>',
+  user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.3-3.6 4.2-5.4 7.5-5.4s6.2 1.8 7.5 5.4"/></svg>',
+  out:'<svg viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l-4-4 4-4M6 12h10"/></svg>'
 };
 function get(k){try{return localStorage.getItem('fl_'+k)}catch(e){return null}}
 function set(k,v){try{localStorage.setItem('fl_'+k,v)}catch(e){}}
@@ -353,7 +367,7 @@ function load(){authMounted=false;return api('/api/state?today='+today()).then(f
 function render(){
   if(!S)return;
   var t=today(),d=parse(t);
-  var h='<div class="top"><div class="brand">THE BIG EO <em>FITNESS</em><small>'+d.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})+'</small></div><button class="gear" data-act="settings" aria-label="Settings">'+IC.gear+'</button></div>';
+  var h='<div class="top"><div class="brand">THE BIG EO <em>FITNESS</em><small>'+d.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})+'</small></div><button class="gear" data-act="menu" aria-label="Menu" aria-haspopup="dialog">'+IC.gear+'</button></div>';
   h+='<div class="seg'+(ui.tab==='wo'?' r':'')+'"><i></i><button data-tab="cal" class="'+(ui.tab==='cal'?'on':'')+'">Fuel</button><button data-tab="wo" class="'+(ui.tab==='wo'?'on':'')+'">Lift</button></div>';
   h+=ui.tab==='cal'?renderCal():renderWo();
   document.getElementById('app').innerHTML=h;
@@ -505,7 +519,18 @@ function renderModal(){
   if(!ui.modal){m.innerHTML='';return}
   var u=C&&C.user,em=u&&u.primaryEmailAddress?u.primaryEmailAddress.emailAddress:'',nm=u?((u.fullName||u.firstName||'')||em):'';
   var acct=u?'<div class="acct">'+(u.imageUrl?'<img src="'+esc(u.imageUrl)+'" alt="">':'')+'<div class="who"><b>'+esc(nm||'Your account')+'</b><span>'+esc(em)+'</span></div></div>':'';
-  m.innerHTML='<div class="scrim" data-act="closemodal"><div class="modal" role="dialog" aria-label="Settings">'+acct+'<h2>Daily goals</h2><form id="goals"><div class="row2"><label class="fld">Calories<input name="g" type="number" inputmode="numeric" placeholder="e.g. 3000" value="'+(S.goal||'')+'"></label><label class="fld">Protein (g)<input name="pg" type="number" inputmode="numeric" placeholder="e.g. 180" value="'+(S.proteinGoal||'')+'"></label></div><button class="go">Save goals</button></form><div class="btns"><button class="ghost" data-act="account">Manage account</button><button class="ghost" data-act="logout">Log out</button></div></div></div>';
+  var body;
+  if(ui.modal==='goals'){
+    body='<button class="mback" data-act="menu">‹ Menu</button><h2>Daily goals</h2><form id="goals"><div class="row2"><label class="fld">Calories<input name="g" type="number" inputmode="numeric" placeholder="e.g. 3000" value="'+(S.goal||'')+'"></label><label class="fld">Protein (g)<input name="pg" type="number" inputmode="numeric" placeholder="e.g. 180" value="'+(S.proteinGoal||'')+'"></label></div><button class="go">Save goals</button></form>';
+  }else{
+    body=acct+'<div class="menu-list">'
+      +'<button class="mi" data-act="goals">'+IC.target+'<span>Daily goals</span><small>'+(S.goal?fmt(S.goal)+' cal':'Not set')+'</small></button>'
+      +'<button class="mi" data-act="editplan">'+IC.plan+'<span>Workout plan</span></button>'
+      +'<button class="mi" data-act="account">'+IC.user+'<span>Account settings</span></button>'
+      +'<div class="msep"></div>'
+      +'<button class="mi mi-out" data-act="logout">'+IC.out+'<span>Log out</span></button></div>';
+  }
+  m.innerHTML='<div class="scrim" data-act="closemodal"><div class="modal" role="dialog" aria-label="'+(ui.modal==='goals'?'Daily goals':'Menu')+'">'+body+'</div></div>';
 }
 
 // ---------- actions ----------
@@ -552,7 +577,9 @@ document.addEventListener('click',function(e){
   if(b.dataset.tab){ui.tab=b.dataset.tab;set('tab',ui.tab);ui.ai=null;ui.aiErr='';render();window.scrollTo(0,0);return}
   if(b.dataset.chk){var k=b.dataset.chk,on=!checked(weekStart(t),k);setCheck(k,on);render();return}
   if(b.dataset.wday){ui.wday=b.dataset.wday;ui.logOpen='';render();return}
-  if(a==='settings'){ui.modal=true;renderModal();return}
+  if(a==='settings'||a==='goals'){ui.modal='goals';renderModal();return}
+  if(a==='menu'){ui.modal='menu';renderModal();return}
+  if(a==='editplan'){ui.modal=false;renderModal();ui.tab='wo';set('tab','wo');ui.edit=true;render();window.scrollTo(0,0);return}
   if(a==='closemodal'){ui.modal=false;renderModal();return}
   if(a==='prev'){ui.calDay=addDays(ui.calDay||t,-1);render();return}
   if(a==='next'){var n=addDays(ui.calDay||t,1);ui.calDay=n>=t?'':n;render();return}
