@@ -23,7 +23,7 @@ const DEFAULT_PLAN = {
   Mon: ["Chest", "Triceps"], Tue: ["Back", "Biceps"], Wed: ["Legs"], Thu: [],
   Fri: ["Shoulders", "Abs"], Sat: [], Sun: [],
 };
-const SETTING_KEYS = ["goal", "proteinGoal", "groups", "plan", "favorites", "goalWeight"];
+const SETTING_KEYS = ["goal", "proteinGoal", "groups", "plan", "favorites", "goalWeight", "profile", "rx"];
 
 const TEXT_MODEL = "claude-haiku-5-5";
 const PHOTO_MODEL = "claude-sonnet-5-5";
@@ -186,6 +186,10 @@ async function api(req, env, url) {
     await useAiCredit(db, env, uid);
     return json(await aiParse(env, await req.json()));
   }
+  if (p === "/api/ai/plan" && m === "POST") {
+    await useAiCredit(db, env, uid);
+    return json(await aiPlan(env, db, uid));
+  }
   if (p === "/api/ai/recap" && m === "POST") {
     await useAiCredit(db, env, uid);
     return json(await aiRecap(env, await req.json()));
@@ -241,6 +245,8 @@ async function loadState(db, uid, today, env) {
     lifts: lifts.results,
     weights: weights.results,
     goalWeight: s.goalWeight || 0,
+    profile: s.profile || null,
+    rx: s.rx || {},
     isOwner: !!(env.OWNER_USER_ID && uid === env.OWNER_USER_ID),
   };
 }
@@ -250,7 +256,7 @@ async function claude(env, { model, system, content, tool, maxTokens = 800 }) {
   if (!env.ANTHROPIC_API_KEY) throw Object.assign(new Error("ANTHROPIC_API_KEY secret is not set in Cloudflare yet."), { status: 500 });
   const body = { model, max_tokens: maxTokens, system, messages: [{ role: "user", content }] };
   if (tool) { body.tools = [tool]; body.tool_choice = { type: "tool", name: tool.name }; }
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
+  const r = await fetch((env.ANTHROPIC_API_URL || "https://api.anthropic.com") + "/v1/messages", {
     method: "POST",
     headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -324,4 +330,156 @@ async function aiRecap(env, { summary }) {
     "3) the single most useful thing to fix next week. Use only the numbers given; don't invent data.";
   const text = await claude(env, { model: TEXT_MODEL, system, content: [{ type: "text", text: JSON.stringify(summary).slice(0, 12000) }], maxTokens: 300 });
   return { text };
+}
+
+
+// ---------- AI plan builder (workout split + calorie/protein targets) ----------
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const BODY_TYPES = { lean: "Lean / naturally slim, hard to gain weight", athletic: "Athletic / muscular, gains fairly easily", heavier: "Heavier build / carries extra body fat" };
+const GOALS = { ripped: "Get ripped (lean out while keeping or building muscle)", muscle: "Build muscle / size", lose: "Lose a bit of weight", fit: "Stay in shape / maintain" };
+const ACTIVITY = { desk: 1.4, feet: 1.55, physical: 1.75 }; // includes planned training
+const ACTIVITY_TXT = { desk: "Mostly sitting during the day", feet: "On their feet a lot", physical: "Physically demanding job" };
+
+function cleanProfile(p) {
+  p = p || {};
+  const out = {
+    sex: p.sex === "female" ? "female" : p.sex === "male" ? "male" : null,
+    age: Math.round(+p.age) || null,
+    heightIn: Math.round(+p.heightIn) || null,
+    bodyType: BODY_TYPES[p.bodyType] ? p.bodyType : null,
+    goal: GOALS[p.goal] ? p.goal : null,
+    activity: ACTIVITY[p.activity] ? p.activity : null,
+    days: Math.round(+p.days) >= 2 && Math.round(+p.days) <= 6 ? Math.round(+p.days) : null,
+  };
+  const label = { sex: "sex", age: "age", heightIn: "height", bodyType: "body type", goal: "goal", activity: "daily activity", days: "training days" };
+  const missing = Object.keys(out).filter((k) => !out[k]).map((k) => label[k]);
+  if (out.age && (out.age < 13 || out.age > 100)) missing.push("age (13-100)");
+  if (out.heightIn && (out.heightIn < 48 || out.heightIn > 90)) missing.push("height");
+  return { profile: out, missing };
+}
+
+// Mifflin-St Jeor estimate, then hard safety limits the AI's numbers must stay inside.
+function calorieBounds(pr, lbs) {
+  const kg = lbs * 0.4536, cm = pr.heightIn * 2.54;
+  const bmr = 10 * kg + 6.25 * cm - 5 * pr.age + (pr.sex === "male" ? 5 : -161);
+  const tdee = bmr * ACTIVITY[pr.activity];
+  const floor = pr.sex === "male" ? 1600 : 1300;
+  const maxCut = pr.age < 18 ? 0.1 : 0.2; // under 18: small deficits only
+  const safeMin = Math.max(floor, tdee * (1 - maxCut)), safeMax = tdee * (pr.age < 18 ? 1.15 : 1.2);
+  // goal direction: muscle = at/above maintenance, cutting = below, maintain = near maintenance
+  let lo = safeMin, hi = safeMax;
+  if (pr.goal === "muscle") lo = Math.max(lo, tdee);
+  else if (pr.goal === "ripped" || pr.goal === "lose") hi = Math.max(lo, Math.min(hi, tdee - 150));
+  else { lo = Math.max(lo, tdee * 0.92); hi = Math.min(hi, tdee * 1.08); }
+  return { tdee: Math.round(tdee), min: Math.round(lo), max: Math.round(hi) };
+}
+
+const PLAN_TOOL = {
+  name: "save_plan",
+  description: "Save the personalized weekly training split and daily nutrition targets.",
+  input_schema: {
+    type: "object",
+    properties: {
+      calories: { type: "integer", description: "Daily calorie target" },
+      protein: { type: "integer", description: "Daily protein target in grams" },
+      summary: { type: "string", description: "2-3 short sentences: the approach and why, in plain words, addressed to the user" },
+      schedule: {
+        type: "object",
+        description: "Muscle group names trained each day. Empty array = rest day.",
+        properties: Object.fromEntries(DAYS.map((d) => [d, { type: "array", items: { type: "string" } }])),
+        required: DAYS,
+      },
+      groups: {
+        type: "array",
+        description: "Every muscle group used in the schedule, with its exercises",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Short group name, e.g. Chest, Back, Legs, Shoulders, Arms, Core, Conditioning" },
+            exercises: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string", description: "Common gym exercise name, e.g. 'Bench press'" },
+                  prescription: { type: "string", description: "Sets x reps, e.g. '4 x 6-8' or '3 x 12' or '20 min'" },
+                },
+                required: ["name", "prescription"],
+              },
+            },
+          },
+          required: ["name", "exercises"],
+        },
+      },
+      tips: { type: "array", items: { type: "string" }, description: "Up to 3 short, practical tips" },
+    },
+    required: ["calories", "protein", "summary", "schedule", "groups"],
+  },
+};
+
+const s40 = (x, n = 40) => String(x || "").replace(/\s+/g, " ").trim().slice(0, n);
+
+async function aiPlan(env, db, uid) {
+  const [set, wrow] = await db.batch([
+    db.prepare("SELECT key,value FROM user_settings WHERE user_id=? AND key IN ('profile','goalWeight')").bind(uid),
+    db.prepare("SELECT weight FROM weights WHERE user_id=? ORDER BY day DESC LIMIT 1").bind(uid),
+  ]);
+  const st = {};
+  for (const r of set.results) st[r.key] = JSON.parse(r.value);
+  const { profile: pr, missing } = cleanProfile(st.profile);
+  const weight = wrow.results[0] && wrow.results[0].weight;
+  if (missing.length) throw httpError("Finish your profile first: " + missing.join(", "), 400);
+  if (!weight) throw httpError("Log your current weight on the Body tab first.", 400);
+  const goalWeight = +st.goalWeight || null;
+  const b = calorieBounds(pr, weight);
+
+  const facts = {
+    sex: pr.sex, age: pr.age, height: `${Math.floor(pr.heightIn / 12)}'${pr.heightIn % 12}"`, weight_lb: weight,
+    goal_weight_lb: goalWeight, body_type: BODY_TYPES[pr.bodyType], goal: GOALS[pr.goal],
+    daily_activity: ACTIVITY_TXT[pr.activity], training_days_per_week: pr.days,
+    estimated_maintenance_calories: b.tdee, allowed_calorie_range: [b.min, b.max],
+  };
+  const system =
+    "You are an experienced strength coach and sports nutritionist. Build a practical plan for a regular gym-goer. " +
+    "Training: exactly the requested number of training days, sensible rest spacing, compound lifts first, 4-6 exercises per session, common gym equipment, sets x reps that fit the goal. " +
+    "Group names must match between schedule and groups. Nutrition: the daily calorie target MUST be inside allowed_calorie_range " +
+    "(cutting goals: modest deficit; muscle goals: small surplus; maintain: near maintenance). Protein about 0.7-1.0 g per lb of bodyweight. " +
+    (pr.age < 18 ? "The user is under 18: favor maintenance or a very small deficit, emphasize technique and recovery, no aggressive cutting language. " : "") +
+    "Keep the summary encouraging and plain. Never suggest extreme diets, fasting protocols, supplements, or drugs. Always call save_plan.";
+  const out = await claude(env, {
+    model: PHOTO_MODEL, system, tool: PLAN_TOOL, maxTokens: 2500,
+    content: [{ type: "text", text: "User profile:\n" + JSON.stringify(facts, null, 1) }],
+  });
+  return validatePlan(out, b, weight);
+}
+
+// Server-side validation: never trust the model's output shape or numbers.
+function validatePlan(out, b, weight) {
+  const groups = {}, rx = {};
+  for (const g of (Array.isArray(out.groups) ? out.groups : []).slice(0, 8)) {
+    const name = s40(g && g.name, 24);
+    if (!name || groups[name]) continue;
+    const ex = [];
+    for (const e of (Array.isArray(g.exercises) ? g.exercises : []).slice(0, 7)) {
+      const en = s40(e && e.name);
+      if (!en || ex.includes(en)) continue;
+      ex.push(en);
+      if (e.prescription) rx[en] = s40(e.prescription, 24);
+    }
+    if (ex.length) groups[name] = ex;
+  }
+  if (!Object.keys(groups).length) throw httpError("The AI didn't return a usable plan. Try again.", 502);
+  const plan = {};
+  for (const d of DAYS) {
+    const arr = out.schedule && Array.isArray(out.schedule[d]) ? out.schedule[d] : [];
+    plan[d] = [...new Set(arr.map((x) => s40(x, 24)).filter((x) => groups[x]))];
+  }
+  const calories = Math.min(b.max, Math.max(b.min, Math.round(+out.calories || b.tdee)));
+  const protein = Math.min(Math.round(weight * 1.1), Math.max(Math.round(weight * 0.6), Math.round(+out.protein || weight * 0.8)));
+  return {
+    calories, protein, maintenance: b.tdee,
+    summary: s40(out.summary, 600),
+    tips: (Array.isArray(out.tips) ? out.tips : []).slice(0, 3).map((t) => s40(t, 200)).filter(Boolean),
+    plan, groups, rx,
+  };
 }
