@@ -312,7 +312,17 @@ details.eg summary span{color:var(--mut);font-weight:400;font-size:14px}
 .modal .out{display:block;width:100%;margin-top:12px;text-align:center}
 
 /* login */
-.auth{display:flex;flex-direction:column;align-items:center;max-width:420px;margin:0 auto;padding:calc(28px + env(safe-area-inset-top)) 4px 24px;min-height:calc(100svh - 40px)}
+.quotes{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;display:grid;grid-template-columns:1fr 1fr;gap:36px;padding:0 20px;
+  -webkit-mask-image:radial-gradient(ellipse 70% 62% at 50% 44%,transparent 0%,transparent 55%,#000 100%);mask-image:radial-gradient(ellipse 70% 62% at 50% 44%,transparent 0%,transparent 55%,#000 100%)}
+.quotes .col{display:flex;flex-direction:column;gap:44px;min-width:0;animation:qscroll 70s linear infinite}
+.quotes .col.b{animation-duration:90s;animation-direction:reverse;margin-top:-120px}
+.quotes p{margin:0;font:700 20px/1.1 var(--cond);letter-spacing:.6px;color:rgba(234,240,247,.08);text-transform:uppercase;overflow-wrap:anywhere}
+.quotes p.hi{color:rgba(61,123,255,.32)}
+@keyframes qscroll{from{transform:translateY(0)}to{transform:translateY(-50%)}}
+.quotes .col:nth-child(n+3){display:none}
+@media (min-width:700px){.quotes{grid-template-columns:repeat(4,1fr)}.quotes .col:nth-child(n+3){display:flex}.quotes p{font-size:26px}}
+@media (prefers-reduced-motion:reduce){.quotes .col{animation:none}}
+.auth{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;max-width:420px;margin:0 auto;padding:calc(28px + env(safe-area-inset-top)) 4px 24px;min-height:calc(100svh - 40px)}
 .auth-brand{text-align:center;margin-bottom:30px}
 .auth-arc{display:block;margin:0 auto 16px;width:110px;height:58px}
 .auth-mark{font:700 44px/.9 var(--cond);letter-spacing:1.5px}
@@ -424,7 +434,10 @@ var authMounted=false;
 function renderAuth(){
   document.getElementById('dock').hidden=true;document.getElementById('nav').hidden=true;document.getElementById('modal').innerHTML='';ui.modal=false;
   var up=/[?&]auth=signup/.test(location.search);
-  document.getElementById('app').innerHTML='<div class="auth"><div class="auth-brand"><svg class="auth-arc" viewBox="0 0 120 64" aria-hidden="true"><path d="M10 58 A50 50 0 0 1 110 58" fill="none" stroke="#223047" stroke-width="8" stroke-linecap="round"/><path d="M10 58 A50 50 0 0 1 86 17" fill="none" stroke="#3D7BFF" stroke-width="8" stroke-linecap="round"/></svg><div class="auth-mark">THE BIG EO<b>FITNESS</b></div></div><div class="auth-clerk" id="clerk-auth"></div></div>';
+  var Q=['Risk it all for a better tomorrow','Discipline beats motivation','One more rep','Stronger than yesterday','Show up when it\'s hard','Built, not born','Small wins every day','Earn it','Do the work','Consistency compounds','Your only competition is you','Comfort won\'t change you','Outwork your excuses','Trust the process'];
+  var col=function(off){var a=Q.slice(off).concat(Q.slice(0,off));a=a.concat(a);return a.map(function(q){return '<p'+(q.indexOf('Risk it all')===0?' class="hi"':'')+'>'+q+'</p>'}).join('')};
+  var quotes='<div class="quotes" aria-hidden="true"><div class="col">'+col(0)+'</div><div class="col b">'+col(5)+'</div><div class="col">'+col(9)+'</div><div class="col b">'+col(3)+'</div></div>';
+  document.getElementById('app').innerHTML=quotes+'<div class="auth"><div class="auth-brand"><svg class="auth-arc" viewBox="0 0 120 64" aria-hidden="true"><path d="M10 58 A50 50 0 0 1 110 58" fill="none" stroke="#223047" stroke-width="8" stroke-linecap="round"/><path d="M10 58 A50 50 0 0 1 86 17" fill="none" stroke="#3D7BFF" stroke-width="8" stroke-linecap="round"/></svg><div class="auth-mark">THE BIG EO<b>FITNESS</b></div></div><div class="auth-clerk" id="clerk-auth"></div></div>';
   if(!C)return;
   var el=document.getElementById('clerk-auth');
   var ap={variables:APPEAR.variables,elements:AUTH_EL};
