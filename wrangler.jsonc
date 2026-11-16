@@ -26,7 +26,7 @@
     "CLERK_JWT_KEY": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA67gXD03xQk19WssWPgi8\nNS7idzzIUNNpajFpqnU7J2nzBKIxKuSchsFwbIjwn478xTDH2IBMMEvqwHRrVHGx\n0PVnhWVmlYYfrMMxbDkhZxJNmu+voXQ80RC1oO+m6Nhw04SqPO5euPG+ne0A9AU9\np0YCbxcnAewezGhkOyIqiippSXTkd0Y3MKyyPPYj0X/HuJwbt3Pvcp9qOmMGMSws\nUtidFsD9AHWPkIEpld6G4dOzdBh4zt5q6X921qsUOuJVestmKzw1pQwjXfoJQTRf\n2i8IPFBSHhiysdxOsVWrGdUY/upZ+hXdl2lS4Dvp6eSsZQ/cthdyDHyKW2zW0in1\niQIDAQAB\n-----END PUBLIC KEY-----",
     // Ethan's Clerk user ID (user_...). His pre-accounts data is attached to this account on first login,
     // and he is exempt from the AI cap. Fill in after he signs up.
-    "OWNER_USER_ID": "",
+    "OWNER_USER_ID": "user_3MAaLqz8MzPiwWYNlurNRxNnQBN",
     "AI_DAILY_LIMIT": "30"
   }
   // Secrets (set in Cloudflare dashboard → Settings → Variables and Secrets):
