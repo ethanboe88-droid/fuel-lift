@@ -230,7 +230,16 @@ details.eg summary span{color:var(--mut);font-weight:400;font-size:14px}
 .modal .out{display:block;width:100%;margin-top:12px;text-align:center}
 
 /* login */
-.login{max-width:340px;margin:16vh auto 0;text-align:center}
+.login{max-width:400px;margin:9vh auto 0;text-align:center}
+.login .clerk{display:flex;justify-content:center;margin-top:22px;text-align:left}
+.login .err{color:#FFB3B4;margin-top:14px;font-size:14.5px}
+.acct{display:flex;align-items:center;gap:12px;padding:12px 14px;margin:2px 0 16px;background:var(--raised);border:1px solid var(--line);border-radius:var(--r-md)}
+.acct img{width:40px;height:40px;border-radius:50%;object-fit:cover;flex:none}
+.acct .who{flex:1;min-width:0}
+.acct .who b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acct .who span{color:var(--mut);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.modal .btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.modal .btns .ghost{width:100%;padding:11px 0}
 .login .mark{font:700 46px/.92 var(--cond);letter-spacing:1.5px}
 .login .mark em{font-style:normal;color:var(--blue);display:block;font-size:24px;letter-spacing:9px;margin-top:8px}
 .login p{color:var(--mut);margin:10px 0 26px}
@@ -278,23 +287,62 @@ function lastLift(ex){for(var i=0;i<S.lifts.length;i++)if(S.lifts[i].exercise.to
 function liftStr(l){var s='';if(l.weight)s+=(+l.weight)+' lb';if(l.reps)s+=(s?' × ':'')+l.reps;if(l.sets)s+=' × '+l.sets;return s||'done'}
 function allExercises(){var a=[];Object.keys(S.groups).forEach(function(g){S.groups[g].forEach(function(e){a.push(e)})});return a}
 
-function api(path,opts){
+// ---------- auth (Clerk) ----------
+var C=null; // window.Clerk once loaded
+function token(fresh){
+  if(!C||!C.session)return Promise.resolve(null);
+  return C.session.getToken(fresh?{skipCache:true}:undefined).catch(function(){return null});
+}
+function api(path,opts,retried){
   opts=opts||{};
-  return fetch(path,{method:opts.method||(opts.body?'POST':'GET'),headers:opts.body?{'content-type':'application/json'}:{},body:opts.body?JSON.stringify(opts.body):undefined,credentials:'same-origin'})
-  .then(function(r){return r.json().catch(function(){return{}}).then(function(d){
-    if(r.status===401&&path!=='/api/login'){S=null;renderLogin();throw new Error('login')}
+  return token(retried).then(function(tk){
+    var h={};if(opts.body)h['content-type']='application/json';if(tk)h['authorization']='Bearer '+tk;
+    return fetch(path,{method:opts.method||(opts.body?'POST':'GET'),headers:h,body:opts.body?JSON.stringify(opts.body):undefined,credentials:'same-origin'});
+  }).then(function(r){return r.json().catch(function(){return{}}).then(function(d){
+    if(r.status===401){
+      if(!retried&&C&&C.session)return api(path,opts,true); // token may have just expired: refresh once
+      S=null;renderAuth();throw new Error('login')}
     if(!r.ok)throw new Error(d.error||('Error '+r.status));return d})});
+}
+var APPEAR={variables:{colorPrimary:'#3D7BFF',colorPrimaryForeground:'#FFFFFF',colorBackground:'#1A2433',colorForeground:'#EAF0F7',colorMutedForeground:'#8C9AB0',colorMuted:'#223047',colorInput:'#223047',colorInputForeground:'#EAF0F7',colorNeutral:'#EAF0F7',colorBorder:'#2C3A52',colorDanger:'#FF4D4F',colorShadow:'rgba(5,10,20,.6)',colorModalBackdrop:'rgba(6,10,18,.7)',fontFamily:'Barlow, -apple-system, sans-serif',borderRadius:'12px'}};
+function addScript(src,attrs){return new Promise(function(res,rej){var el=document.createElement('script');el.src=src;el.async=true;el.crossOrigin='anonymous';Object.keys(attrs||{}).forEach(function(k){el.setAttribute(k,attrs[k])});el.onload=res;el.onerror=function(){rej(new Error('Could not reach the sign-in service. Check your connection.'))};document.head.appendChild(el)})}
+function boot(){
+  fetch('/api/config').then(function(r){return r.json()}).then(function(cfg){
+    var pk=cfg.clerkPublishableKey;if(!pk)throw new Error('Sign-in is not configured yet.');
+    var host=atob(pk.split('_').slice(2).join('_')).replace(/\$$/,'');
+    return addScript('https://'+host+'/npm/@clerk/ui@1/dist/ui.browser.js').then(function(){
+      return addScript('https://'+host+'/npm/@clerk/clerk-js@6/dist/clerk.browser.js',{'data-clerk-publishable-key':pk})});
+  }).then(function(){
+    C=window.Clerk;
+    return C.load({ui:{ClerkUI:window.__internal_ClerkUICtor},appearance:APPEAR,signInUrl:'/?auth=signin',signUpUrl:'/?auth=signup',signInFallbackRedirectUrl:'/',signUpFallbackRedirectUrl:'/'});
+  }).then(function(){
+    var signedIn=!!(C.isSignedIn||C.user);
+    C.addListener(function(e){ // signed out elsewhere, or session ended
+      if(!e.session&&S){S=null;renderAuth()}
+      else if(e.session&&!S&&!authMounted)load();
+    },{skipInitialEmit:true});
+    if(signedIn){if(/[?&]auth=/.test(location.search))history.replaceState(null,'','/');load()}else renderAuth();
+  }).catch(function(e){
+    document.getElementById('app').innerHTML='<p class="boot">'+esc(e.message)+'<br><br><button class="ghost" onclick="location.reload()">Try again</button></p>';
+  });
+}
+var authMounted=false;
+function renderAuth(){
+  document.getElementById('dock').hidden=true;document.getElementById('modal').innerHTML='';ui.modal=false;
+  var up=/[?&]auth=signup/.test(location.search);
+  document.getElementById('app').innerHTML='<div class="login"><div class="mark">THE BIG EO<em>FITNESS</em></div><div class="clerk" id="clerk-auth"></div></div>';
+  if(!C)return;
+  var el=document.getElementById('clerk-auth');
+  if(up)C.mountSignUp(el,{routing:'hash',signInUrl:'/?auth=signin'});
+  else C.mountSignIn(el,{routing:'hash',signUpUrl:'/?auth=signup'});
+  authMounted=true;
 }
 var tt=null;
 function flash(t,bad){var el=document.getElementById('st');el.textContent=t;el.className='toast'+(bad?' bad':'');clearTimeout(tt);if(!bad&&t!=='Saving…')tt=setTimeout(function(){el.className='toast hide'},1300);if(bad)tt=setTimeout(function(){el.className='toast hide'},4000)}
 function saving(p){flash('Saving…');return p.then(function(x){flash('Saved');return x}).catch(function(e){if(e.message!=='login')flash(e.message+'. Not saved.',true);throw e})}
 
-function load(){return api('/api/state?today='+today()).then(function(d){S=d;render()}).catch(function(e){if(e.message!=='login')document.getElementById('app').innerHTML='<p class="boot">Couldn\'t load your data. '+esc(e.message)+'<br><br><button class="ghost" onclick="location.reload()">Try again</button></p>'})}
+function load(){authMounted=false;return api('/api/state?today='+today()).then(function(d){S=d;render()}).catch(function(e){if(e.message!=='login')document.getElementById('app').innerHTML='<p class="boot">Couldn\'t load your data. '+esc(e.message)+'<br><br><button class="ghost" onclick="location.reload()">Try again</button></p>'})}
 
-function renderLogin(err){
-  document.getElementById('dock').hidden=true;document.getElementById('modal').innerHTML='';
-  document.getElementById('app').innerHTML='<form class="login" id="login"><div class="mark">THE BIG EO<em>FITNESS</em></div><p>Enter your passcode</p><input type="password" name="pw" autocomplete="current-password" autofocus aria-label="Passcode"><button class="go">Unlock</button>'+(err?'<div class="err">'+esc(err)+'</div>':'')+'</form>';
-}
 
 // ---------- render ----------
 function render(){
@@ -450,7 +498,9 @@ function grow(el){el.style.height='auto';el.style.height=Math.min(120,el.scrollH
 function renderModal(){
   var m=document.getElementById('modal');
   if(!ui.modal){m.innerHTML='';return}
-  m.innerHTML='<div class="scrim" data-act="closemodal"><div class="modal" role="dialog" aria-label="Settings"><h2>Daily goals</h2><form id="goals"><div class="row2"><label class="fld">Calories<input name="g" type="number" inputmode="numeric" placeholder="e.g. 3000" value="'+(S.goal||'')+'"></label><label class="fld">Protein (g)<input name="pg" type="number" inputmode="numeric" placeholder="e.g. 180" value="'+(S.proteinGoal||'')+'"></label></div><button class="go">Save goals</button></form><button class="ghost out" data-act="logout">Log out of this device</button></div></div>';
+  var u=C&&C.user,em=u&&u.primaryEmailAddress?u.primaryEmailAddress.emailAddress:'',nm=u?((u.fullName||u.firstName||'')||em):'';
+  var acct=u?'<div class="acct">'+(u.imageUrl?'<img src="'+esc(u.imageUrl)+'" alt="">':'')+'<div class="who"><b>'+esc(nm||'Your account')+'</b><span>'+esc(em)+'</span></div></div>':'';
+  m.innerHTML='<div class="scrim" data-act="closemodal"><div class="modal" role="dialog" aria-label="Settings">'+acct+'<h2>Daily goals</h2><form id="goals"><div class="row2"><label class="fld">Calories<input name="g" type="number" inputmode="numeric" placeholder="e.g. 3000" value="'+(S.goal||'')+'"></label><label class="fld">Protein (g)<input name="pg" type="number" inputmode="numeric" placeholder="e.g. 180" value="'+(S.proteinGoal||'')+'"></label></div><button class="go">Save goals</button></form><div class="btns"><button class="ghost" data-act="account">Manage account</button><button class="ghost" data-act="logout">Log out</button></div></div></div>';
 }
 
 // ---------- actions ----------
@@ -511,7 +561,8 @@ document.addEventListener('click',function(e){
     else favs().push({name:sm.name,calories:sm.calories,protein:sm.protein});
     render();saveFavs();return}
   if(a==='edit'){ui.edit=!ui.edit;render();window.scrollTo(0,0);return}
-  if(a==='logout'){ui.modal=false;api('/api/logout',{body:{}}).then(function(){S=null;renderLogin()});return}
+  if(a==='logout'){ui.modal=false;S=null;C.signOut({redirectUrl:'/'});return}
+  if(a==='account'){ui.modal=false;renderModal();C.openUserProfile({appearance:APPEAR});return}
   if(a==='clearimg'){ui.img=null;renderDock();return}
   if(a==='mic'){toggleMic();return}
   if(a==='aicancel'){ui.ai=null;ui.aiErr='';renderDock();return}
@@ -538,7 +589,6 @@ document.addEventListener('change',function(e){
 });
 document.addEventListener('submit',function(e){
   e.preventDefault();var f=e.target,v=function(n){return f.elements[n]?f.elements[n].value.trim():''};
-  if(f.id==='login'){var bt=f.querySelector('button');bt.disabled=true;api('/api/login',{body:{password:v('pw')}}).then(load).catch(function(er){renderLogin(er.message)});return}
   if(!S)return;
   if(f.id==='aiform'){runAI();return}
   if(f.id==='favform'){var fc=parseFloat(v('c')),fn=v('n');if(!fn||!(fc>=0))return;var fp=v('p');
@@ -575,7 +625,7 @@ function runRecap(){
   api('/api/ai/recap',{body:{summary:summary}}).then(function(r){ui.recap=r.text}).catch(function(e){if(e.message!=='login')ui.recap='Check-in failed: '+e.message}).then(function(){ui.recapBusy=false;render()});
 }
 
-load();
+boot();
 })();
 </script>
 </body>

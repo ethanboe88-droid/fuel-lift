@@ -1,5 +1,14 @@
-// Fuel & Lift — Cloudflare Worker API
+// The Big EO Fitness — Cloudflare Worker API (multi-user, Clerk auth)
 // Static app lives in /public (served by Workers Assets). Everything under /api/* runs here.
+//
+// Security model:
+//   * Every /api/* route except /api/config requires "Authorization: Bearer <Clerk session token>".
+//   * The token is verified here with Clerk's public key (CLERK_JWT_KEY): signature, expiry, and
+//     that it was issued for this site's origin (azp). The user ID comes ONLY from the verified
+//     token's `sub` claim, never from the request body or URL.
+//   * Every query filters by that user ID, including UPDATE/DELETE by row id.
+
+import { verifyToken } from "@clerk/backend";
 
 const DEFAULT_GROUPS = {
   Chest: ["Bench press", "Incline dumbbell press", "Cable fly", "Dips"],
@@ -14,18 +23,17 @@ const DEFAULT_PLAN = {
   Mon: ["Chest", "Triceps"], Tue: ["Back", "Biceps"], Wed: ["Legs"], Thu: [],
   Fri: ["Shoulders", "Abs"], Sat: [], Sun: [],
 };
+const SETTING_KEYS = ["goal", "proteinGoal", "groups", "plan", "favorites"];
 
 const TEXT_MODEL = "claude-haiku-5-5";
 const PHOTO_MODEL = "claude-sonnet-5-5";
-const COOKIE = "fl_session";
-const MAX_TRIES = 5;
-const LOCK_MS = 15 * 60 * 1000;
 
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), {
     status,
     headers: { "content-type": "application/json", "cache-control": "no-store", ...headers },
   });
+const httpError = (msg, status) => Object.assign(new Error(msg), { status });
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -36,84 +44,92 @@ export default {
     try {
       return await api(req, env, url);
     } catch (e) {
-      console.error(e);
+      if (!e.status || e.status >= 500) console.error(e);
       return json({ error: e.message || "Server error" }, e.status || 500);
     }
   },
 };
 
 // ---------- auth ----------
-async function sessionToken(env) {
-  const key = await crypto.subtle.importKey(
-    "raw", new TextEncoder().encode(env.APP_PASSWORD), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("fuel-lift-session-v1"));
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+function allowedOrigins(env, url) {
+  const extra = String(env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  return [url.origin, ...extra];
 }
-function getCookie(req, name) {
-  const m = (req.headers.get("cookie") || "").match(new RegExp("(?:^|; )" + name + "=([^;]+)"));
-  return m ? m[1] : null;
+
+// Returns the verified Clerk user ID, or throws 401.
+async function requireUser(req, env, url) {
+  const h = req.headers.get("authorization") || "";
+  const token = h.startsWith("Bearer ") ? h.slice(7).trim() : "";
+  if (!token) throw httpError("login", 401);
+  if (!env.CLERK_JWT_KEY) throw httpError("CLERK_JWT_KEY is not configured", 500);
+  let res;
+  try {
+    res = await verifyToken(token, {
+      jwtKey: env.CLERK_JWT_KEY.replace(/\\n/g, "\n"),
+      authorizedParties: allowedOrigins(env, url),
+    });
+  } catch (e) {
+    throw httpError("login", 401);
+  }
+  const payload = res && res.data !== undefined ? res.data : res;
+  if ((res && res.errors) || !payload || typeof payload.sub !== "string" || !payload.sub.startsWith("user_"))
+    throw httpError("login", 401);
+  return payload.sub;
 }
-function safeEqual(a, b) {
-  if (!a || !b || a.length !== b.length) return false;
-  let r = 0;
-  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return r === 0;
-}
-async function isAuthed(req, env) {
-  if (!env.APP_PASSWORD) return false;
-  return safeEqual(getCookie(req, COOKIE), await sessionToken(env));
+
+// The owner's pre-accounts data (rows with no user_id + the old single-user settings/checks tables)
+// is attached to OWNER_USER_ID the first time the owner signs in. Runs once; safe to re-run.
+async function claimLegacyData(db, env, userId) {
+  if (!env.OWNER_USER_ID || userId !== env.OWNER_USER_ID) return;
+  const done = await db.prepare("SELECT value FROM app_meta WHERE key='legacy_claimed'").first();
+  if (done) {
+    // still sweep any rows the old app wrote after the first claim (e.g. during rollout)
+    await db.batch([
+      db.prepare("UPDATE meals SET user_id=? WHERE user_id IS NULL").bind(userId),
+      db.prepare("UPDATE lifts SET user_id=? WHERE user_id IS NULL").bind(userId),
+    ]);
+    return;
+  }
+  await db.batch([
+    db.prepare("UPDATE meals SET user_id=? WHERE user_id IS NULL").bind(userId),
+    db.prepare("UPDATE lifts SET user_id=? WHERE user_id IS NULL").bind(userId),
+    db.prepare(
+      `INSERT OR IGNORE INTO user_settings(user_id,key,value)
+       SELECT ?, key, value FROM settings WHERE key IN ('goal','proteinGoal','groups','plan','favorites')`
+    ).bind(userId),
+    db.prepare("INSERT OR IGNORE INTO user_checks(user_id,week,k) SELECT ?, week, k FROM checks").bind(userId),
+    db.prepare("INSERT INTO app_meta(key,value) VALUES('legacy_claimed', ?)").bind(userId + " " + new Date().toISOString()),
+  ]);
 }
 
 // ---------- router ----------
 async function api(req, env, url) {
   const p = url.pathname, m = req.method;
 
-  if (p === "/api/login" && m === "POST") {
-    if (!env.APP_PASSWORD) return json({ error: "APP_PASSWORD secret is not set in Cloudflare yet." }, 500);
-    const { password } = await req.json();
-    // Lockout: 5 wrong tries → login locked for 15 minutes (already-logged-in devices keep working)
-    const now = Date.now();
-    const row = await env.DB.prepare("SELECT value FROM settings WHERE key='login_guard'").first();
-    const guard = row ? JSON.parse(row.value) : { fails: 0, until: 0 };
-    if (guard.until > now) {
-      const mins = Math.ceil((guard.until - now) / 60000);
-      return json({ error: `Too many wrong tries. Locked for ${mins} more min.` }, 429);
-    }
-    const saveGuard = (g) => env.DB.prepare(
-      "INSERT INTO settings(key,value) VALUES('login_guard',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
-    ).bind(JSON.stringify(g)).run();
-    if (!safeEqual(String(password || ""), env.APP_PASSWORD)) {
-      const fails = (guard.fails || 0) + 1;
-      if (fails >= MAX_TRIES) {
-        await saveGuard({ fails: 0, until: now + LOCK_MS });
-        return json({ error: "Too many wrong tries. Locked for 15 min." }, 429);
-      }
-      await saveGuard({ fails, until: 0 });
-      await new Promise((r) => setTimeout(r, 800));
-      return json({ error: `Wrong password (${MAX_TRIES - fails} tries left)` }, 401);
-    }
-    if (guard.fails) await saveGuard({ fails: 0, until: 0 });
-    const tok = await sessionToken(env);
-    return json({ ok: true }, 200, {
-      "set-cookie": `${COOKIE}=${tok}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`,
-    });
-  }
-  if (p === "/api/logout" && m === "POST") {
-    return json({ ok: true }, 200, { "set-cookie": `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0` });
+  // Public, non-secret config the app needs before sign-in.
+  if (p === "/api/config" && m === "GET") {
+    return json({ clerkPublishableKey: env.CLERK_PUBLISHABLE_KEY || "" });
   }
 
-  if (!(await isAuthed(req, env))) return json({ error: "login" }, 401);
+  const uid = await requireUser(req, env, url);
   const db = env.DB;
 
-  if (p === "/api/state" && m === "GET") return json(await loadState(db, url.searchParams.get("today")));
+  if (p === "/api/state" && m === "GET") {
+    await claimLegacyData(db, env, uid);
+    return json(await loadState(db, uid, url.searchParams.get("today"), env));
+  }
 
   if (p === "/api/settings" && m === "POST") {
     const body = await req.json();
     const stmts = [];
-    for (const k of ["goal", "proteinGoal", "groups", "plan", "favorites"]) {
-      if (body[k] !== undefined)
-        stmts.push(db.prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
-          .bind(k, JSON.stringify(body[k])));
+    for (const k of SETTING_KEYS) {
+      if (body[k] !== undefined) {
+        const v = JSON.stringify(body[k]);
+        if (v.length > 50000) throw httpError("Setting too large", 400);
+        stmts.push(db.prepare(
+          "INSERT INTO user_settings(user_id,key,value) VALUES(?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value"
+        ).bind(uid, k, v));
+      }
     }
     if (stmts.length) await db.batch(stmts);
     return json({ ok: true });
@@ -121,46 +137,64 @@ async function api(req, env, url) {
 
   if (p === "/api/meals" && m === "POST") {
     const b = await req.json();
-    if (!DAY_RE.test(b.day) || !(+b.calories >= 0)) return json({ error: "Bad meal" }, 400);
-    const r = await db.prepare("INSERT INTO meals(day,name,calories,protein) VALUES(?,?,?,?) RETURNING id")
-      .bind(b.day, String(b.name || "").slice(0, 120), Math.round(+b.calories), b.protein == null || b.protein === "" ? null : Math.round(+b.protein))
+    if (!DAY_RE.test(b.day) || !(+b.calories >= 0) || +b.calories > 20000) return json({ error: "Bad meal" }, 400);
+    const r = await db.prepare("INSERT INTO meals(user_id,day,name,calories,protein) VALUES(?,?,?,?,?) RETURNING id")
+      .bind(uid, b.day, String(b.name || "").slice(0, 120), Math.round(+b.calories), b.protein == null || b.protein === "" ? null : Math.round(+b.protein))
       .first();
     return json({ id: r.id });
   }
   if (p.startsWith("/api/meals/") && m === "DELETE") {
-    await db.prepare("DELETE FROM meals WHERE id=?").bind(+p.split("/").pop()).run();
+    const r = await db.prepare("DELETE FROM meals WHERE id=? AND user_id=?").bind(+p.split("/").pop(), uid).run();
+    if (!r.meta.changes) return json({ error: "Not found" }, 404);
     return json({ ok: true });
   }
 
   if (p === "/api/check" && m === "POST") {
     const b = await req.json();
-    if (!DAY_RE.test(b.week) || !b.k) return json({ error: "Bad check" }, 400);
-    if (b.on) await db.prepare("INSERT OR IGNORE INTO checks(week,k) VALUES(?,?)").bind(b.week, b.k).run();
-    else await db.prepare("DELETE FROM checks WHERE week=? AND k=?").bind(b.week, b.k).run();
+    if (!DAY_RE.test(b.week) || !b.k || String(b.k).length > 200) return json({ error: "Bad check" }, 400);
+    if (b.on) await db.prepare("INSERT OR IGNORE INTO user_checks(user_id,week,k) VALUES(?,?,?)").bind(uid, b.week, String(b.k)).run();
+    else await db.prepare("DELETE FROM user_checks WHERE user_id=? AND week=? AND k=?").bind(uid, b.week, String(b.k)).run();
     return json({ ok: true });
   }
 
   if (p === "/api/lifts" && m === "POST") {
-    const b = await req.json();
-    const r = await saveLift(db, b);
+    const r = await saveLift(db, uid, await req.json());
     return json({ id: r.id });
   }
   if (p.startsWith("/api/lifts/") && m === "DELETE") {
-    await db.prepare("DELETE FROM lifts WHERE id=?").bind(+p.split("/").pop()).run();
+    const r = await db.prepare("DELETE FROM lifts WHERE id=? AND user_id=?").bind(+p.split("/").pop(), uid).run();
+    if (!r.meta.changes) return json({ error: "Not found" }, 404);
     return json({ ok: true });
   }
 
-  if (p === "/api/ai/parse" && m === "POST") return json(await aiParse(env, await req.json()));
-  if (p === "/api/ai/recap" && m === "POST") return json(await aiRecap(env, await req.json()));
+  if (p === "/api/ai/parse" && m === "POST") {
+    await useAiCredit(db, env, uid);
+    return json(await aiParse(env, await req.json()));
+  }
+  if (p === "/api/ai/recap" && m === "POST") {
+    await useAiCredit(db, env, uid);
+    return json(await aiRecap(env, await req.json()));
+  }
 
   return json({ error: "Not found" }, 404);
 }
 
-async function saveLift(db, b) {
-  if (!DAY_RE.test(b.day) || !b.exercise) throw Object.assign(new Error("Bad lift"), { status: 400 });
+// Daily AI cap per user (owner is exempt). AI_DAILY_LIMIT defaults to 30.
+async function useAiCredit(db, env, uid) {
+  if (env.OWNER_USER_ID && uid === env.OWNER_USER_ID) return;
+  const limit = Number(env.AI_DAILY_LIMIT || 30);
+  const day = new Date().toISOString().slice(0, 10);
+  const row = await db.prepare(
+    "INSERT INTO ai_usage(user_id,day,n) VALUES(?,?,1) ON CONFLICT(user_id,day) DO UPDATE SET n=n+1 RETURNING n"
+  ).bind(uid, day).first();
+  if (row.n > limit) throw httpError(`Daily AI limit reached (${limit}/day). Log manually or try again tomorrow.`, 429);
+}
+
+async function saveLift(db, uid, b) {
+  if (!DAY_RE.test(b.day) || !b.exercise) throw httpError("Bad lift", 400);
   const n = (v) => (v == null || v === "" || isNaN(+v) ? null : +v);
-  return db.prepare("INSERT INTO lifts(day,exercise,weight,reps,sets) VALUES(?,?,?,?,?) RETURNING id")
-    .bind(b.day, String(b.exercise).slice(0, 80), n(b.weight), n(b.reps) && Math.round(n(b.reps)), n(b.sets) && Math.round(n(b.sets)))
+  return db.prepare("INSERT INTO lifts(user_id,day,exercise,weight,reps,sets) VALUES(?,?,?,?,?,?) RETURNING id")
+    .bind(uid, b.day, String(b.exercise).slice(0, 80), n(b.weight), n(b.reps) && Math.round(n(b.reps)), n(b.sets) && Math.round(n(b.sets)))
     .first();
 }
 
@@ -170,14 +204,13 @@ function addDays(day, n) {
   return d.toISOString().slice(0, 10);
 }
 
-async function loadState(db, today) {
+async function loadState(db, uid, today, env) {
   if (!DAY_RE.test(today || "")) today = new Date().toISOString().slice(0, 10);
-  const since = addDays(today, -60);
   const [settings, meals, checks, lifts] = await db.batch([
-    db.prepare("SELECT key,value FROM settings"),
-    db.prepare("SELECT id,day,name,calories,protein FROM meals WHERE day>=? ORDER BY id").bind(since),
-    db.prepare("SELECT week,k FROM checks WHERE week>=?").bind(addDays(today, -21)),
-    db.prepare("SELECT id,day,exercise,weight,reps,sets FROM lifts WHERE day>=? ORDER BY day DESC, id DESC").bind(addDays(today, -120)),
+    db.prepare("SELECT key,value FROM user_settings WHERE user_id=?").bind(uid),
+    db.prepare("SELECT id,day,name,calories,protein FROM meals WHERE user_id=? AND day>=? ORDER BY id").bind(uid, addDays(today, -60)),
+    db.prepare("SELECT week,k FROM user_checks WHERE user_id=? AND week>=?").bind(uid, addDays(today, -21)),
+    db.prepare("SELECT id,day,exercise,weight,reps,sets FROM lifts WHERE user_id=? AND day>=? ORDER BY day DESC, id DESC").bind(uid, addDays(today, -120)),
   ]);
   const s = {};
   for (const r of settings.results) s[r.key] = JSON.parse(r.value);
@@ -190,6 +223,7 @@ async function loadState(db, today) {
     meals: meals.results,
     checks: checks.results,
     lifts: lifts.results,
+    isOwner: !!(env.OWNER_USER_ID && uid === env.OWNER_USER_ID),
   };
 }
 
