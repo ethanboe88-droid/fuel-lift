@@ -1,0 +1,18 @@
+import crypto from 'node:crypto'; import fs from 'node:fs';
+const B='http://localhost:8788',priv=fs.readFileSync(process.env.TEST_PRIV||'test-keys/priv.pem');const b64=o=>Buffer.from(JSON.stringify(o)).toString('base64url');
+const jwt=sub=>{const now=Math.floor(Date.now()/1000);const h=b64({alg:'RS256',typ:'JWT',cat:'cl_B7d4PD111AAA'}),p=b64({sub,azp:B,iat:now,nbf:now-5,exp:now+300});return h+'.'+p+'.'+crypto.sign('RSA-SHA256',Buffer.from(h+'.'+p),priv).toString('base64url')};
+const call=async(t,path,body,method)=>{const r=await fetch(B+path,{method:method||(body?'POST':'GET'),headers:{authorization:'Bearer '+t,...(body?{'content-type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});return [r.status,await r.json()]};
+let pass=0,fail=0;const ok=(c,m)=>{c?pass++:fail++;console.log((c?'PASS ':'FAIL ')+m)};
+const A=jwt('user_ethan'),F=jwt('user_friend'),T='?today=2026-11-15';
+const days=['2026-10-14','2026-10-25','2026-11-01','2026-11-08','2026-11-12','2026-11-15'],vals=[176.2,175.4,174.8,174.1,173.6,173.0];
+for(let i=0;i<days.length;i++)await call(A,'/api/weights',{day:days[i],weight:vals[i]});
+let [,a]=await call(A,'/api/state'+T);ok(a.weights.length===6&&a.weights[5].weight===173,'owner has 6 weigh-ins');
+let [s,u]=await call(A,'/api/weights',{day:'2026-11-15',weight:172.6});[,a]=await call(A,'/api/state'+T);
+ok(a.weights.length===6&&a.weights[5].weight===172.6,'same day updates instead of duplicating');
+ok((await call(A,'/api/weights',{day:'2026-11-15',weight:20}))[0]===400,'rejects unrealistic weight');
+await call(A,'/api/settings',{goalWeight:170});[,a]=await call(A,'/api/state'+T);ok(a.goalWeight===170,'goal weight saved');
+let [,f]=await call(F,'/api/state'+T);ok(f.weights.length===0&&!f.goalWeight,"friend can't see owner's weights or goal");
+ok((await call(F,'/api/weights/'+a.weights[0].id,null,'DELETE'))[0]===404,"friend can't delete owner's weigh-in");
+await call(F,'/api/weights',{day:'2026-11-15',weight:150});[,a]=await call(A,'/api/state'+T);[,f]=await call(F,'/api/state'+T);
+ok(a.weights[5].weight===172.6&&f.weights.length===1&&f.weights[0].weight===150,'same date for 2 users stays separate');
+console.log(`${pass} passed, ${fail} failed`);

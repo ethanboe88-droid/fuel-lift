@@ -23,7 +23,7 @@ const DEFAULT_PLAN = {
   Mon: ["Chest", "Triceps"], Tue: ["Back", "Biceps"], Wed: ["Legs"], Thu: [],
   Fri: ["Shoulders", "Abs"], Sat: [], Sun: [],
 };
-const SETTING_KEYS = ["goal", "proteinGoal", "groups", "plan", "favorites"];
+const SETTING_KEYS = ["goal", "proteinGoal", "groups", "plan", "favorites", "goalWeight"];
 
 const TEXT_MODEL = "claude-haiku-5-5";
 const PHOTO_MODEL = "claude-sonnet-5-5";
@@ -167,6 +167,21 @@ async function api(req, env, url) {
     return json({ ok: true });
   }
 
+  if (p === "/api/weights" && m === "POST") {
+    const b = await req.json();
+    const w = Math.round(+b.weight * 10) / 10;
+    if (!DAY_RE.test(b.day) || !(w >= 50 && w <= 800)) return json({ error: "Enter a weight between 50 and 800 lb" }, 400);
+    const r = await db.prepare(
+      "INSERT INTO weights(user_id,day,weight) VALUES(?,?,?) ON CONFLICT(user_id,day) DO UPDATE SET weight=excluded.weight RETURNING id"
+    ).bind(uid, b.day, w).first();
+    return json({ id: r.id, day: b.day, weight: w });
+  }
+  if (p.startsWith("/api/weights/") && m === "DELETE") {
+    const r = await db.prepare("DELETE FROM weights WHERE id=? AND user_id=?").bind(+p.split("/").pop(), uid).run();
+    if (!r.meta.changes) return json({ error: "Not found" }, 404);
+    return json({ ok: true });
+  }
+
   if (p === "/api/ai/parse" && m === "POST") {
     await useAiCredit(db, env, uid);
     return json(await aiParse(env, await req.json()));
@@ -206,11 +221,12 @@ function addDays(day, n) {
 
 async function loadState(db, uid, today, env) {
   if (!DAY_RE.test(today || "")) today = new Date().toISOString().slice(0, 10);
-  const [settings, meals, checks, lifts] = await db.batch([
+  const [settings, meals, checks, lifts, weights] = await db.batch([
     db.prepare("SELECT key,value FROM user_settings WHERE user_id=?").bind(uid),
     db.prepare("SELECT id,day,name,calories,protein FROM meals WHERE user_id=? AND day>=? ORDER BY id").bind(uid, addDays(today, -60)),
     db.prepare("SELECT week,k FROM user_checks WHERE user_id=? AND week>=?").bind(uid, addDays(today, -21)),
     db.prepare("SELECT id,day,exercise,weight,reps,sets FROM lifts WHERE user_id=? AND day>=? ORDER BY day DESC, id DESC").bind(uid, addDays(today, -120)),
+    db.prepare("SELECT id,day,weight FROM weights WHERE user_id=? AND day>=? ORDER BY day").bind(uid, addDays(today, -400)),
   ]);
   const s = {};
   for (const r of settings.results) s[r.key] = JSON.parse(r.value);
@@ -223,6 +239,8 @@ async function loadState(db, uid, today, env) {
     meals: meals.results,
     checks: checks.results,
     lifts: lifts.results,
+    weights: weights.results,
+    goalWeight: s.goalWeight || 0,
     isOwner: !!(env.OWNER_USER_ID && uid === env.OWNER_USER_ID),
   };
 }
