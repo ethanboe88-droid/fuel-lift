@@ -254,17 +254,35 @@ async function loadState(db, uid, today, env) {
 // ---------- AI ----------
 async function claude(env, { model, system, content, tool, maxTokens = 800 }) {
   if (!env.ANTHROPIC_API_KEY) throw Object.assign(new Error("ANTHROPIC_API_KEY secret is not set in Cloudflare yet."), { status: 500 });
-  const body = { model, max_tokens: maxTokens, system, messages: [{ role: "user", content }] };
-  if (tool) { body.tools = [tool]; body.tool_choice = { type: "tool", name: tool.name }; }
-  const r = await fetch((env.ANTHROPIC_API_URL || "https://api.anthropic.com") + "/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await r.json();
-  if (!r.ok) throw Object.assign(new Error("AI error: " + (data.error?.message || r.status)), { status: 502 });
-  if (tool) return data.content.find((c) => c.type === "tool_use")?.input || {};
-  return data.content.filter((c) => c.type === "text").map((c) => c.text).join("\n");
+  // Newer models reject forced tool_choice ("tool"/"any"), so we use "auto" and instruct the model to call the tool.
+  const sys = tool ? system + ` Respond only by calling the ${tool.name} tool.` : system;
+  const send = async (messages) => {
+    const body = { model, max_tokens: maxTokens, system: sys, messages };
+    if (tool) { body.tools = [tool]; body.tool_choice = { type: "auto" }; }
+    const r = await fetch((env.ANTHROPIC_API_URL || "https://api.anthropic.com") + "/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw Object.assign(new Error("AI error: " + (data.error?.message || r.status)), { status: 502 });
+    return data;
+  };
+  const messages = [{ role: "user", content }];
+  let data = await send(messages);
+  const text = (d) => (d.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
+  if (!tool) return text(data);
+  let use = (data.content || []).find((c) => c.type === "tool_use" && c.name === tool.name);
+  if (use) return use.input || {};
+  // Fallback 1: model answered with JSON in text.
+  const m = text(data).match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch {} }
+  // Fallback 2: ask once more, explicitly.
+  data = await send([...messages, { role: "assistant", content: data.content && data.content.length ? data.content : [{ type: "text", text: "..." }] },
+    { role: "user", content: [{ type: "text", text: `Please call the ${tool.name} tool now with your answer.` }] }]);
+  use = (data.content || []).find((c) => c.type === "tool_use" && c.name === tool.name);
+  if (use) return use.input || {};
+  throw Object.assign(new Error("The AI didn't return a result. Try again."), { status: 502 });
 }
 
 const LOG_TOOL = {
