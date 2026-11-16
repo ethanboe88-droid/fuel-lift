@@ -138,6 +138,10 @@ input:not([class*="cl-"]):focus,textarea:focus{border-color:var(--blue);outline:
 .wlog{display:grid;grid-template-columns:1.1fr 1.35fr auto;gap:8px;padding:14px}
 .wlog input{font:600 20px var(--cond);text-align:center}
 .wlog input[type=date]{font:500 15px var(--body)}
+.gwrow{display:flex;align-items:center;gap:10px;padding:12px 14px 14px;border-top:1px solid var(--line)}
+.gwrow label{flex:1;color:var(--mut);font-size:15px}
+.gwrow input{width:96px;text-align:center;font:600 18px var(--cond);padding:9px}
+.gwrow .ghost{padding:9px 14px}
 .wchart{padding:16px 12px 10px}
 .wchart svg{width:100%;height:auto;display:block;overflow:visible}
 .ranges{display:flex;gap:6px}
@@ -564,7 +568,7 @@ function renderBody(){
     h+='<div class="deltas"><div><b>'+dlt(last.weight,w7&&w7.weight)+'</b><span>vs 7 days ago</span></div><div><b>'+dlt(last.weight,w30&&w30.weight)+'</b><span>vs 30 days ago</span></div><div><b>'+(gw?wfmt(Math.abs(last.weight-gw)):'–')+'</b><span>'+(gw?'lb to goal':'No goal set')+'</span></div></div>'}
   // log
   h+=renderCoach();
-  h+='<div class="h"><h2>Log weight</h2></div><div class="panel"><form class="wlog" id="wform"><input name="w" type="number" inputmode="decimal" step="0.1" placeholder="lb" aria-label="Weight in pounds" value="'+(todayW?wfmt(todayW.weight):'')+'"><input name="d" type="date" aria-label="Date" max="'+t+'" value="'+t+'"><button class="go">'+(todayW?'Update':'Save')+'</button></form></div>';
+  h+='<div class="h"><h2>Log weight</h2></div><div class="panel"><form class="wlog" id="wform"><input name="w" type="number" inputmode="decimal" step="0.1" placeholder="lb" aria-label="Weight in pounds" value="'+(todayW?wfmt(todayW.weight):'')+'"><input name="d" type="date" aria-label="Date" max="'+t+'" value="'+t+'"><button class="go">'+(todayW?'Update':'Save')+'</button></form><form class="gwrow" id="gwform"><label for="gwin">Goal weight</label><input id="gwin" name="gw" type="number" inputmode="decimal" step="0.1" placeholder="lb" value="'+(gw?wfmt(gw):'')+'"><button class="ghost">'+(gw?'Update':'Set')+'</button>'+(gw?'<button type="button" class="del" data-act="cleargw" aria-label="Remove goal weight">×</button>':'')+'</form></div>';
   // chart
   var R=ui.wrange||30,since=addDays(t,-R),pts=W.filter(function(x){return x.day>=since});
   h+='<div class="h"><h2>Trend</h2><div class="ranges">'+[30,90,365].map(function(r){return '<button data-wrange="'+r+'" class="'+(R===r?'on':'')+'">'+(r===365?'1y':r+'d')+'</button>'}).join('')+'</div></div><div class="panel wchart">';
@@ -583,7 +587,7 @@ function renderBody(){
     if(pts.length<=45)pts.forEach(function(x){s2+='<circle cx="'+X(x.day).toFixed(1)+'" cy="'+Y(x.weight).toFixed(1)+'" r="3" fill="#121A26" stroke="#3D7BFF" stroke-width="2"/>'});
     h+=s2+'</svg>';
   }
-  h+='<div class="goalrow"><span>Goal weight</span>'+(gw?'<b>'+wfmt(gw)+' lb</b>':'')+'<button class="lnk" data-act="goals" style="background:none;border:0;color:var(--blue);font-weight:600;padding:0">'+(gw?'Edit':'Set goal')+'</button></div></div>';
+  h+='<div class="goalrow"><span>Goal weight</span>'+(gw?'<b>'+wfmt(gw)+' lb</b>':'')+''+(gw?'':'<span>Not set</span>')+'</div></div>';
   // history
   if(W.length){h+='<div class="h"><h2>History</h2></div><div class="panel rows">';
     W.slice(-14).reverse().forEach(function(x){var i=W.indexOf(x),prev=i>0?W[i-1]:null,d=prev?Math.round((x.weight-prev.weight)*10)/10:null;
@@ -754,6 +758,7 @@ document.addEventListener('click',function(e){
   if(b.dataset.wday){ui.wday=b.dataset.wday;ui.logOpen='';render();return}
   if(a==='settings'||a==='goals'){ui.modal='goals';renderModal();return}
   if(a==='menu'){ui.modal='menu';renderModal();return}
+  if(a==='cleargw'){S.goalWeight=0;saving(api('/api/settings',{body:{goalWeight:0}}));render();return}
   if(a==='profile'){ui.modal='profile';renderModal();return}
   if(a==='closemodal2'){ui.modal=false;ui.plan=null;ui.planErr='';renderModal();return}
   if(a==='buildplan'){buildPlan();return}
@@ -823,6 +828,8 @@ document.addEventListener('submit',function(e){
     if(build){pr.then(function(){render();buildPlan()},function(){})}
     else{ui.modal=false;pr.then(render,render);render()}
     return}
+  if(f.id==='gwform'){var g2=Math.round((+v('gw')||0)*10)/10;if(!(g2>=50&&g2<=800)){flash('Enter a goal between 50 and 800 lb',true);return}
+    S.goalWeight=g2;saving(api('/api/settings',{body:{goalWeight:g2}}));render();return}
   if(f.id==='wform'){var wv=parseFloat(v('w')),wd=v('d')||today();if(!(wv>=50&&wv<=800)){flash('Enter a weight between 50 and 800 lb',true);return}
     saving(api('/api/weights',{body:{day:wd,weight:wv}})).then(function(r){S.weights=wts().filter(function(x){return x.day!==r.day});S.weights.push({id:r.id,day:r.day,weight:r.weight});S.weights.sort(function(a,b){return a.day<b.day?-1:1});render()});return}
   if(f.dataset.liftform){var k=f.dataset.liftform;ui.logOpen='';addLift({exercise:k.split('|')[2],weight:v('w'),reps:v('r'),sets:v('s')},k).then(render,render);render();return}
