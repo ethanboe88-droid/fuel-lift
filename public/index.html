@@ -49,6 +49,13 @@ button{cursor:pointer}
 .mi.mi-out{color:#FF7A7C}
 .mi.mi-out svg{stroke:#FF7A7C}
 .msep{height:1px;background:var(--line);margin:6px 8px}
+.steps{list-style:none;margin:6px 0 0;padding:0;counter-reset:st}
+.steps li{counter-increment:st;display:flex;gap:14px;padding:12px 0;border-top:1px solid var(--line);line-height:1.45}
+.steps li:first-child{border-top:0}
+.steps li::before{content:counter(st);flex:none;width:28px;height:28px;border-radius:50%;background:var(--blue-soft);color:#BBD0FF;font:600 15px/28px var(--cond);text-align:center}
+.steps b{color:var(--txt)}
+.key{display:inline-block;border:1px solid var(--line);background:var(--raised);border-radius:7px;padding:0 6px;font-weight:600;font-size:14px;line-height:22px}
+.hnote{margin:12px 0 0;padding:12px 14px;border-radius:14px;background:var(--raised);color:var(--mut);font-size:14px;line-height:1.45}
 .mback{border:0;background:none;color:var(--blue);font-weight:600;font-size:15px;padding:0 0 12px}
 .toast{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%);max-width:calc(100vw - 32px);width:max-content;background:var(--raised);border:1px solid var(--line);padding:9px 16px;border-radius:14px;font-size:14px;line-height:1.35;text-align:center;color:var(--mut);z-index:60;pointer-events:none;transition:opacity .25s;box-shadow:0 10px 30px rgba(5,10,20,.5)}
 .toast.hide{opacity:0}
@@ -367,6 +374,7 @@ var IC={
   body:'<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8.5 10a3.5 3.5 0 0 1 7 0"/><path d="M12 10l1.6-2"/></svg>',
   target:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg>',
   plan:'<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>',
+  phone:'<svg viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg>',
   user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.3-3.6 4.2-5.4 7.5-5.4s6.2 1.8 7.5 5.4"/></svg>',
   out:'<svg viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l-4-4 4-4M6 12h10"/></svg>'
 };
@@ -699,6 +707,23 @@ function renderModal(){
       if(P.tips&&P.tips.length)body+='<ul class="tips">'+P.tips.map(function(t){return '<li>'+esc(t)+'</li>'}).join('')+'</ul>';
       body+='<div class="pacts"><button class="go" data-act="applyplan">Apply plan</button><button class="ghost" data-act="closemodal2">Not now</button></div><div style="font-size:12.5px;color:var(--mut);text-align:center;margin-top:4px">Applying replaces your current workout plan and daily goals.</div>';
     }
+  }else if(ui.modal==='howios'){
+    body='<button class="mback" data-act="menu">‹ Menu</button><h2>Add to iPhone home screen</h2><p style="margin:0 0 6px;color:var(--mut)">Use <b style="color:var(--txt)">Safari</b>. It opens full-screen like a real app.</p><ol class="steps">'
+      +'<li><span>Open this app in <b>Safari</b> and sign in.</span></li>'
+      +'<li><span>Tap the <span class="key">•••</span> button next to the address bar. On older iPhones (or if your toolbar shows it), tap the <b>Share</b> button <span class="key">⬆︎</span> instead and skip to step 4.</span></li>'
+      +'<li><span>Tap <b>Share</b>.</span></li>'
+      +'<li><span>Scroll down and tap <b>Add to Home Screen</b>. If you don\'t see it, tap <b>View More</b>, or <b>Edit Actions</b> at the bottom to add it.</span></li>'
+      +'<li><span>Leave <b>Open as Web App</b> turned on.</span></li>'
+      +'<li><span>Tap <b>Add</b>. The Big EO icon shows up on your home screen.</span></li></ol>'
+      +'<div class="hnote">To remove it later, press and hold the icon and tap <b style="color:var(--txt)">Remove App</b> or <b style="color:var(--txt)">Delete Bookmark</b>. Your data stays saved in your account.</div>';
+  }else if(ui.modal==='howandroid'){
+    body='<button class="mback" data-act="menu">‹ Menu</button><h2>Add to Android home screen</h2><p style="margin:0 0 6px;color:var(--mut)">Use <b style="color:var(--txt)">Chrome</b>.</p><ol class="steps">'
+      +'<li><span>Open this app in <b>Chrome</b> and sign in.</span></li>'
+      +'<li><span>Tap the <span class="key">⋮</span> menu in the top-right corner.</span></li>'
+      +'<li><span>Tap <b>Add to home screen</b>.</span></li>'
+      +'<li><span>Tap <b>Install</b> (some phones say <b>Add</b>).</span></li>'
+      +'<li><span>If asked, tap <b>Add automatically</b>, or press and drag the icon where you want it.</span></li></ol>'
+      +'<div class="hnote">On <b style="color:var(--txt)">Samsung Internet</b>: tap the menu <span class="key">≡</span>, then <b style="color:var(--txt)">Add page to</b> and <b style="color:var(--txt)">Home screen</b>.</div>';
   }else if(ui.modal==='goals'){
     body='<button class="mback" data-act="menu">‹ Menu</button><h2>Daily goals</h2><form id="goals"><div class="row2"><label class="fld">Calories<input name="g" type="number" inputmode="numeric" placeholder="e.g. 3000" value="'+(S.goal||'')+'"></label><label class="fld">Protein (g)<input name="pg" type="number" inputmode="numeric" placeholder="e.g. 180" value="'+(S.proteinGoal||'')+'"></label></div><label class="fld">Goal weight (lb, optional)<input name="gw" type="number" inputmode="decimal" step="0.1" placeholder="e.g. 175" value="'+(S.goalWeight||'')+'"></label><button class="go">Save goals</button></form>';
   }else{
@@ -707,9 +732,12 @@ function renderModal(){
       +'<button class="mi" data-act="editplan">'+IC.plan+'<span>Workout plan</span></button>'
       +'<button class="mi" data-act="account">'+IC.user+'<span>Account settings</span></button>'
       +'<div class="msep"></div>'
+      +'<button class="mi" data-act="howios">'+IC.phone+'<span>Add to iPhone home screen</span></button>'
+      +'<button class="mi" data-act="howandroid">'+IC.phone+'<span>Add to Android home screen</span></button>'
+      +'<div class="msep"></div>'
       +'<button class="mi mi-out" data-act="logout">'+IC.out+'<span>Log out</span></button></div>';
   }
-  m.innerHTML='<div class="scrim" data-act="closemodal"><div class="modal'+(ui.modal==='profile'||ui.modal==='plan'?' tall':'')+'" role="dialog" aria-label="'+({goals:'Daily goals',profile:'Your profile',plan:'Your plan'}[ui.modal]||'Menu')+'">'+body+'</div></div>';
+  m.innerHTML='<div class="scrim" data-act="closemodal"><div class="modal'+(ui.modal==='profile'||ui.modal==='plan'||ui.modal==='howios'||ui.modal==='howandroid'?' tall':'')+'" role="dialog" aria-label="'+({goals:'Daily goals',profile:'Your profile',plan:'Your plan',howios:'Add to iPhone home screen',howandroid:'Add to Android home screen'}[ui.modal]||'Menu')+'">'+body+'</div></div>';
 }
 
 // ---------- actions ----------
@@ -758,6 +786,7 @@ document.addEventListener('click',function(e){
   if(b.dataset.wday){ui.wday=b.dataset.wday;ui.logOpen='';render();return}
   if(a==='settings'||a==='goals'){ui.modal='goals';renderModal();return}
   if(a==='menu'){ui.modal='menu';renderModal();return}
+  if(a==='howios'||a==='howandroid'){ui.modal=a;renderModal();var md=document.querySelector('.modal');if(md)md.scrollTop=0;return}
   if(a==='cleargw'){S.goalWeight=0;saving(api('/api/settings',{body:{goalWeight:0}}));render();return}
   if(a==='profile'){ui.modal='profile';renderModal();return}
   if(a==='closemodal2'){ui.modal=false;ui.plan=null;ui.planErr='';renderModal();return}
