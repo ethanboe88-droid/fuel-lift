@@ -25,7 +25,7 @@
 *{box-sizing:border-box}
 html{background:var(--base)}
 body{margin:0;background:radial-gradient(120% 60% at 50% -10%,#1B2740 0%,var(--base) 60%) fixed;color:var(--txt);font:16px/1.45 var(--body);-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
-button,input,textarea{font:inherit;color:inherit}
+button:not([class*="cl-"]),input:not([class*="cl-"]),textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .wrap{max-width:520px;margin:0 auto;padding:calc(10px + env(safe-area-inset-top)) 18px calc(var(--dock) + 28px)}
@@ -84,9 +84,9 @@ button{cursor:pointer}
 .del:hover{color:var(--red)}
 .empty{padding:22px 16px;color:var(--mut);font-size:14.5px;text-align:center}
 .manual{display:grid;grid-template-columns:1fr 78px 70px 46px;gap:8px;padding:12px;border-top:1px solid var(--line)}
-input,textarea{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-sm);padding:11px 12px;font-size:16px;width:100%;min-width:0}
-input::placeholder,textarea::placeholder{color:var(--dim)}
-input:focus,textarea:focus{border-color:var(--blue);outline:0}
+input:not([class*="cl-"]),textarea{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-sm);padding:11px 12px;font-size:16px;width:100%;min-width:0}
+input:not([class*="cl-"])::placeholder,textarea::placeholder{color:var(--dim)}
+input:not([class*="cl-"]):focus,textarea:focus{border-color:var(--blue);outline:0}
 .go{border:0;border-radius:var(--r-sm);background:var(--blue);color:#fff;font:600 16px var(--cond);letter-spacing:.4px;padding:0 16px;min-height:44px}
 .go:disabled{opacity:.45}
 .plus{padding:0;font-size:22px}
@@ -230,9 +230,12 @@ details.eg summary span{color:var(--mut);font-weight:400;font-size:14px}
 .modal .out{display:block;width:100%;margin-top:12px;text-align:center}
 
 /* login */
-.login{max-width:400px;margin:9vh auto 0;text-align:center}
-.login .clerk{display:flex;justify-content:center;margin-top:22px;text-align:left}
-.login .err{color:#FFB3B4;margin-top:14px;font-size:14.5px}
+.auth{display:flex;flex-direction:column;align-items:center;max-width:420px;margin:0 auto;padding:calc(28px + env(safe-area-inset-top)) 4px 24px;min-height:calc(100svh - 40px)}
+.auth-brand{text-align:center;margin-bottom:30px}
+.auth-arc{display:block;margin:0 auto 16px;width:110px;height:58px}
+.auth-mark{font:700 44px/.9 var(--cond);letter-spacing:1.5px}
+.auth-mark b{display:block;font-size:19px;letter-spacing:10px;color:var(--blue);margin:10px 0 0 10px}
+.auth-clerk{width:100%}
 .acct{display:flex;align-items:center;gap:12px;padding:12px 14px;margin:2px 0 16px;background:var(--raised);border:1px solid var(--line);border-radius:var(--r-md)}
 .acct img{width:40px;height:40px;border-radius:50%;object-fit:cover;flex:none}
 .acct .who{flex:1;min-width:0}
@@ -240,12 +243,6 @@ details.eg summary span{color:var(--mut);font-weight:400;font-size:14px}
 .acct .who span{color:var(--mut);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .modal .btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .modal .btns .ghost{width:100%;padding:11px 0}
-.login .mark{font:700 46px/.92 var(--cond);letter-spacing:1.5px}
-.login .mark em{font-style:normal;color:var(--blue);display:block;font-size:24px;letter-spacing:9px;margin-top:8px}
-.login p{color:var(--mut);margin:10px 0 26px}
-.login input{text-align:center;font:600 26px var(--cond);letter-spacing:6px;padding:14px}
-.login .go{width:100%;margin-top:12px;min-height:50px;font-size:18px}
-.login .err{color:#FFB3B4;margin-top:14px;font-size:14.5px}
 .boot{text-align:center;margin-top:38vh;color:var(--mut)}
 
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
@@ -304,6 +301,8 @@ function api(path,opts,retried){
       S=null;renderAuth();throw new Error('login')}
     if(!r.ok)throw new Error(d.error||('Error '+r.status));return d})});
 }
+var AUTH_EL={rootBox:{width:'100%'},cardBox:{width:'100%',maxWidth:'420px',boxShadow:'none',border:'0',background:'transparent',borderRadius:'0'},card:{background:'transparent',boxShadow:'none',border:'0',padding:'4px 0 8px',gap:'22px'},header:{alignItems:'flex-start',textAlign:'left'},headerTitle:{fontFamily:'"Barlow Condensed", sans-serif',fontWeight:'600',fontSize:'27px',letterSpacing:'.3px',textAlign:'left'},headerSubtitle:{fontSize:'15px',textAlign:'left'},socialButtonsBlockButton:{background:'#1A2433',border:'1px solid #2C3A52',borderRadius:'14px',height:'50px',boxShadow:'none'},socialButtonsBlockButtonText:{fontSize:'16px',fontWeight:'600',color:'#EAF0F7'},dividerLine:{background:'#2C3A52'},dividerText:{color:'#5D6B82'},formFieldLabel:{fontSize:'14px',color:'#8C9AB0',fontWeight:'500'},formFieldInput:{height:'50px',fontSize:'16px',background:'#1A2433',border:'1px solid #2C3A52',boxShadow:'none',borderRadius:'14px',padding:'0 14px'},formButtonPrimary:{height:'50px',fontSize:'17px',fontWeight:'600',borderRadius:'14px',boxShadow:'0 8px 24px rgba(61,123,255,.35)'},footer:{background:'transparent',border:'0',marginTop:'0'},footerActionLink:{fontWeight:'600',color:'#3D7BFF'}};
+var LOCALE={signIn:{start:{title:'Welcome back',subtitle:'Sign in to keep logging'}},signUp:{start:{title:'Create your account',subtitle:'Track your food and lifts in one place'}}};
 var APPEAR={variables:{colorPrimary:'#3D7BFF',colorPrimaryForeground:'#FFFFFF',colorBackground:'#1A2433',colorForeground:'#EAF0F7',colorMutedForeground:'#8C9AB0',colorMuted:'#223047',colorInput:'#223047',colorInputForeground:'#EAF0F7',colorNeutral:'#EAF0F7',colorBorder:'#2C3A52',colorDanger:'#FF4D4F',colorShadow:'rgba(5,10,20,.6)',colorModalBackdrop:'rgba(6,10,18,.7)',fontFamily:'Barlow, -apple-system, sans-serif',borderRadius:'12px'}};
 function addScript(src,attrs){return new Promise(function(res,rej){var el=document.createElement('script');el.src=src;el.async=true;el.crossOrigin='anonymous';Object.keys(attrs||{}).forEach(function(k){el.setAttribute(k,attrs[k])});el.onload=res;el.onerror=function(){rej(new Error('Could not reach the sign-in service. Check your connection.'))};document.head.appendChild(el)})}
 function boot(){
@@ -314,7 +313,7 @@ function boot(){
       return addScript('https://'+host+'/npm/@clerk/clerk-js@6/dist/clerk.browser.js',{'data-clerk-publishable-key':pk})});
   }).then(function(){
     C=window.Clerk;
-    return C.load({ui:{ClerkUI:window.__internal_ClerkUICtor},appearance:APPEAR,signInUrl:'/?auth=signin',signUpUrl:'/?auth=signup',signInFallbackRedirectUrl:'/',signUpFallbackRedirectUrl:'/'});
+    return C.load({ui:{ClerkUI:window.__internal_ClerkUICtor},appearance:APPEAR,localization:LOCALE,signInUrl:'/?auth=signin',signUpUrl:'/?auth=signup',signInFallbackRedirectUrl:'/',signUpFallbackRedirectUrl:'/'});
   }).then(function(){
     var signedIn=!!(C.isSignedIn||C.user);
     C.addListener(function(e){ // signed out elsewhere, or session ended
@@ -330,11 +329,12 @@ var authMounted=false;
 function renderAuth(){
   document.getElementById('dock').hidden=true;document.getElementById('modal').innerHTML='';ui.modal=false;
   var up=/[?&]auth=signup/.test(location.search);
-  document.getElementById('app').innerHTML='<div class="login"><div class="mark">THE BIG EO<em>FITNESS</em></div><div class="clerk" id="clerk-auth"></div></div>';
+  document.getElementById('app').innerHTML='<div class="auth"><div class="auth-brand"><svg class="auth-arc" viewBox="0 0 120 64" aria-hidden="true"><path d="M10 58 A50 50 0 0 1 110 58" fill="none" stroke="#223047" stroke-width="8" stroke-linecap="round"/><path d="M10 58 A50 50 0 0 1 86 17" fill="none" stroke="#3D7BFF" stroke-width="8" stroke-linecap="round"/></svg><div class="auth-mark">THE BIG EO<b>FITNESS</b></div></div><div class="auth-clerk" id="clerk-auth"></div></div>';
   if(!C)return;
   var el=document.getElementById('clerk-auth');
-  if(up)C.mountSignUp(el,{routing:'hash',signInUrl:'/?auth=signin'});
-  else C.mountSignIn(el,{routing:'hash',signUpUrl:'/?auth=signup'});
+  var ap={variables:APPEAR.variables,elements:AUTH_EL};
+  if(up)C.mountSignUp(el,{routing:'hash',signInUrl:'/?auth=signin',appearance:ap});
+  else C.mountSignIn(el,{routing:'hash',signUpUrl:'/?auth=signup',appearance:ap});
   authMounted=true;
 }
 var tt=null;
